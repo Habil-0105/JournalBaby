@@ -10,7 +10,7 @@ struct ImageElementView: View {
                let uiImage = UIImage(contentsOfFile: store.imagesURL.appendingPathComponent(fileName).path) {
                 Image(uiImage: uiImage)
                     .resizable()
-//                    .scaledToFill()
+                    .scaledToFill()
             } else {
                 Color.gray.opacity(0.2)
                     .overlay(Image(systemName: "photo").font(.largeTitle).foregroundStyle(.secondary))

@@ -20,14 +20,20 @@ struct TextElementView: View {
     }
 
     var body: some View {
+        let contentWidth = max(width - DesignSystem.blockContentPadding * 2, 1)
+
         AutoGrowingTextView(
             text: textBinding,
             isEditable: isActive,
-            width: max(width - DesignSystem.blockContentPadding * 2, 1),
+            width: contentWidth,
             onHeightChange: { measured in
                 store.setTextHeight(element.id, height: measured)
             }
         )
+        // Belt-and-braces alongside AutoGrowingTextView's own
+        // sizeThatFits: pin the width explicitly so text is always
+        // forced to wrap within the block, never past it.
+        .frame(width: contentWidth, alignment: .topLeading)
         .padding(DesignSystem.blockContentPadding)
         .overlay(alignment: .topLeading) {
             if (element.text ?? "").isEmpty {

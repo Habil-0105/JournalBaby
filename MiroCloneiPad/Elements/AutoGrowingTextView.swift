@@ -25,6 +25,10 @@ struct AutoGrowingTextView: UIViewRepresentable {
         view.isScrollEnabled = false
         view.textContainerInset = .zero
         view.textContainer.lineFragmentPadding = 0
+        // Wrapping width tracks the view's own bounds width — this only
+        // does anything useful once that bounds width is actually fixed,
+        // which is what `sizeThatFits(_:uiView:context:)` below does.
+        view.textContainer.widthTracksTextView = true
         view.delegate = context.coordinator
         view.text = text
         view.isEditable = isEditable
@@ -39,6 +43,19 @@ struct AutoGrowingTextView: UIViewRepresentable {
         uiView.isEditable = isEditable
         uiView.isUserInteractionEnabled = isEditable
         recalculateHeight(for: uiView)
+    }
+
+    /// Explicitly tells SwiftUI the exact size to give this view — a
+    /// fixed width (so text wraps instead of running off edge-to-edge
+    /// unbounded) and a height computed from that width. Without this,
+    /// a `UIViewRepresentable` wrapping a non-scrolling `UITextView` has
+    /// no reliable intrinsic width to lay out against, so wrapping never
+    /// kicks in and the text view just grows however wide its content
+    /// wants — which is exactly the "types past the block/page" bug.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        let targetWidth = proposal.width ?? width
+        let size = uiView.sizeThatFits(CGSize(width: targetWidth, height: .greatestFiniteMagnitude))
+        return CGSize(width: targetWidth, height: max(size.height, 1))
     }
 
     private func recalculateHeight(for uiView: UITextView) {

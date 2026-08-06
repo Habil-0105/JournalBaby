@@ -28,6 +28,9 @@ struct ElementContainerView: View {
     private var isText: Bool {
         element.kind == .text
     }
+    private var isDrawing: Bool {
+        element.kind == .drawing
+    }
 
     private var liveWidth: CGFloat {
         min(max(frame.width + widthDelta, DesignSystem.minBlockWidth), store.containerWidth)
@@ -56,13 +59,22 @@ struct ElementContainerView: View {
             }
         }
         .overlay(alignment: .trailing) {
-            if isSelected {
+            if isSelected && !isDrawing {
                 widthHandle.offset(x: 4)
             }
         }
         .overlay(alignment: .bottom) {
-            if isSelected && !isText {
+            if isSelected && !isText && !isDrawing {
                 heightHandle.offset(y: 4)
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if isSelected && isDrawing {
+                // Drawings get ONE handle, not independent width/height
+                // ones: dragging it scales both dimensions together
+                // (locked aspect ratio) so the frame and its strokes can
+                // resize as a single unit without distortion.
+                cornerScaleHandle.offset(x: 4, y: 4)
             }
         }
     }
@@ -107,6 +119,20 @@ struct ElementContainerView: View {
         .gesture(heightGesture)
     }
 
+    private var cornerScaleHandle: some View {
+        ZStack {
+            Color.clear.frame(width: 44, height: 44) // generous hit target
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .font(.caption.bold())
+                .foregroundStyle(.white)
+                .padding(7)
+                .background(Circle().fill(Color.accentColor))
+                .overlay(Circle().stroke(.white, lineWidth: 1))
+        }
+        .contentShape(Rectangle())
+        .gesture(cornerScaleGesture)
+    }
+
     private var deleteButton: some View {
         Button {
             store.remove(element.id)
@@ -140,5 +166,41 @@ struct ElementContainerView: View {
                 store.setHeight(element.id, to: frame.height + value.translation.height)
                 heightDelta = 0
             }
+    }
+
+    /// Drives width and height together from a single drag (horizontal
+    /// distance sets the scale factor, applied to both dimensions), so
+    /// the block's aspect ratio never changes. Reuses the same
+    /// `widthDelta`/`heightDelta` state the edge handles use — only how
+    /// they're computed differs — so `liveWidth`/`liveHeight` need no
+    /// special-casing for the live preview.
+    private var cornerScaleGesture: some Gesture {
+        DragGesture(coordinateSpace: .named("page"))
+            .onChanged { value in
+                let scale = scaleFactor(for: value.translation.width)
+                widthDelta = frame.width * (scale - 1)
+                heightDelta = frame.height * (scale - 1)
+            }
+            .onEnded { value in
+                let scale = scaleFactor(for: value.translation.width)
+                let targetSize = CGSize(width: frame.width * scale, height: frame.height * scale)
+
+                // setWidth/setHeight clamp to min/max bounds — read back
+                // the ACTUAL applied size before scaling the drawing's
+                // strokes, so its content size tracking never drifts
+                // from what's really stored.
+                let finalWidth = store.setWidth(element.id, to: targetSize.width)
+                let finalHeight = store.setHeight(element.id, to: targetSize.height)
+                store.scaleDrawing(element.id, to: CGSize(width: finalWidth, height: finalHeight))
+
+                widthDelta = 0
+                heightDelta = 0
+            }
+    }
+
+    private func scaleFactor(for horizontalTranslation: CGFloat) -> CGFloat {
+        guard frame.width > 0 else { return 1 }
+        let minScale = DesignSystem.minBlockWidth / frame.width
+        return max((frame.width + horizontalTranslation) / frame.width, minScale)
     }
 }

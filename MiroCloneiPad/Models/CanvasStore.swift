@@ -23,6 +23,13 @@ final class CanvasStore: ObservableObject {
     /// height in the layout comes from here, not from `element.height`.
     @Published var textHeights: [UUID: CGFloat] = [:]
 
+    /// The frame size each drawing block's `PKDrawing` strokes are
+    /// CURRENTLY expressed in. `PKDrawing` stores strokes in absolute
+    /// coordinates — resizing the view alone does nothing to them, so
+    /// this is what lets `scaleDrawing` compute "how much did this
+    /// block grow/shrink" and transform the strokes to match.
+    @Published var drawingContentSizes: [UUID: CGSize] = [:]
+
     /// Width available for laying out blocks — screen width minus page
     /// padding on both sides. Set once per layout pass by `ContentView`.
     @Published private(set) var containerWidth: CGFloat = 800
@@ -149,24 +156,56 @@ final class CanvasStore: ObservableObject {
 
     @discardableResult
     func addDrawing() -> CanvasElement {
-        let element = CanvasElement(kind: .drawing, width: containerWidth, height: 260)
+        let size = CGSize(width: containerWidth, height: 260)
+        let element = CanvasElement(kind: .drawing, width: size.width, height: size.height)
         elements.append(element)
         drawings[element.id] = PKDrawing()
+        drawingContentSizes[element.id] = size
         selectedElementID = element.id
         return element
     }
 
     // MARK: - Resizing — the only way a block's size ever changes
 
-    func setWidth(_ id: UUID, to width: CGFloat) {
-        guard let idx = elements.firstIndex(where: { $0.id == id }) else { return }
-        elements[idx].width = min(max(width, DesignSystem.minBlockWidth), containerWidth)
+    /// Returns the width actually applied (post-clamp) — callers that
+    /// need to know the real final size, like `scaleDrawing`, use this
+    /// instead of assuming their requested value stuck.
+    @discardableResult
+    func setWidth(_ id: UUID, to width: CGFloat) -> CGFloat {
+        guard let idx = elements.firstIndex(where: { $0.id == id }) else { return width }
+        let clamped = min(max(width, DesignSystem.minBlockWidth), containerWidth)
+        elements[idx].width = clamped
+        return clamped
     }
 
     /// No-op for `.text` — its height is never user-set, only measured.
-    func setHeight(_ id: UUID, to height: CGFloat) {
-        guard let idx = elements.firstIndex(where: { $0.id == id }), elements[idx].kind != .text else { return }
-        elements[idx].height = max(height, DesignSystem.minBlockHeight)
+    @discardableResult
+    func setHeight(_ id: UUID, to height: CGFloat) -> CGFloat {
+        guard let idx = elements.firstIndex(where: { $0.id == id }), elements[idx].kind != .text else { return height }
+        let clamped = max(height, DesignSystem.minBlockHeight)
+        elements[idx].height = clamped
+        return clamped
+    }
+
+    /// Scales a drawing block's stored strokes to fill a new size,
+    /// keeping the drawing itself in lockstep with its frame instead of
+    /// staying pinned at whatever size it was originally drawn at.
+    /// Called once, after both dimensions of a resize are committed,
+    /// with the block's real final (post-clamp) size.
+    func scaleDrawing(_ id: UUID, to newSize: CGSize) {
+        defer { drawingContentSizes[id] = newSize }
+
+        guard let oldSize = drawingContentSizes[id],
+              oldSize.width > 0, oldSize.height > 0,
+              let current = drawings[id], !current.strokes.isEmpty else {
+            return
+        }
+        let scaleX = newSize.width / oldSize.width
+        let scaleY = newSize.height / oldSize.height
+        guard scaleX.isFinite, scaleY.isFinite, scaleX > 0, scaleY > 0 else { return }
+
+        let transform = CGAffineTransform(scaleX: scaleX, y: scaleY)
+        drawings[id] = current.transformed(using: transform)
     }
 
     func update(_ element: CanvasElement) {
@@ -178,6 +217,7 @@ final class CanvasStore: ObservableObject {
         elements.removeAll { $0.id == id }
         drawings[id] = nil
         textHeights[id] = nil
+        drawingContentSizes[id] = nil
         if selectedElementID == id { selectedElementID = nil }
     }
 }
