@@ -1,0 +1,48 @@
+{
+  "source": "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/ContentView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Journal",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 35
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add Text",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 42
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add Image",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 46
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add Audio",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 52
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add Drawing",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 58
+        }
+      }
+    ]
+  },
+  "version": 1
+}

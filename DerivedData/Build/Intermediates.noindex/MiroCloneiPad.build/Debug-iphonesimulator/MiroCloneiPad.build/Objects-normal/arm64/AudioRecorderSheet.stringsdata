@@ -1,0 +1,40 @@
+{
+  "source": "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Elements/AudioRecorderSheet.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Microphone access is disabled. Enable it in Settings to record audio.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 98
+        }
+      },
+      {
+        "comment": "",
+        "key": "Recording…",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 74
+        }
+      },
+      {
+        "comment": "",
+        "key": "Ready to record",
+        "location": {
+          "startingColumn": 58,
+          "startingLine": 74
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 104
+        }
+      }
+    ]
+  },
+  "version": 1
+}

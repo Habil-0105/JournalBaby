@@ -1,0 +1,16 @@
+{
+  "source": "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Canvas/PageView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Page %lld of %lld",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 34
+        }
+      }
+    ]
+  },
+  "version": 1
+}

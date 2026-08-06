@@ -34,6 +34,8 @@ final class CanvasStore: ObservableObject {
     /// padding on both sides. Set once per layout pass by `ContentView`.
     @Published private(set) var containerWidth: CGFloat = 800
 
+    @Published var currentPageIndex: Int = 0
+
     // MARK: - On-disk storage for images / audio
 
     private var documentsURL: URL {
@@ -59,45 +61,178 @@ final class CanvasStore: ObservableObject {
         containerWidth = width
     }
 
-    /// Effective height for layout purposes: measured content height for
-    /// text, stored height for everything else.
-    func layoutHeight(for element: CanvasElement) -> CGFloat {
-        switch element.kind {
-        case .text:
-            return max(textHeights[element.id] ?? element.height, DesignSystem.minBlockHeight)
-        default:
-            return max(element.height, DesignSystem.minBlockHeight)
-        }
-    }
+    /// Multi-page layout engine. Given full physical page width and height, computes
+    /// bounded page layouts containing block slices. Text automatically splits across pages
+    /// at line boundaries, and non-text blocks reflow to subsequent pages when space is insufficient.
+    func layoutPages(pageWidth: CGFloat, pageHeight: CGFloat) -> [PageLayout] {
+        let effectiveWidth = max(pageWidth - DesignSystem.pagePadding * 2, 100)
+        let effectiveContentHeight = max(pageHeight - DesignSystem.pagePadding * 2 - DesignSystem.pageHeaderHeight, 100)
+        updateContainerWidth(effectiveWidth)
 
-    /// Row-wrap flow layout, recomputed fresh every time it's asked for.
-    /// Cheap for the handful of blocks one page holds, and the frames it
-    /// returns can never overlap by construction: each block either
-    /// fits in the current row or starts a new one below the tallest
-    /// block seen so far in that row.
-    func layout() -> (frames: [UUID: CGRect], contentHeight: CGFloat) {
-        var frames: [UUID: CGRect] = [:]
+        var pages: [PageLayout] = []
+        var currentPageElements: [PlacedElement] = []
+        var pageIndex = 0
         var cursorX: CGFloat = 0
         var cursorY: CGFloat = 0
         var rowHeight: CGFloat = 0
 
-        for element in elements {
-            let width = min(max(element.width, DesignSystem.minBlockWidth), containerWidth)
-            let height = layoutHeight(for: element)
-
-            if cursorX > 0 && cursorX + width > containerWidth + 0.5 {
-                cursorX = 0
-                cursorY += rowHeight + DesignSystem.blockSpacing
-                rowHeight = 0
-            }
-
-            frames[element.id] = CGRect(x: cursorX, y: cursorY, width: width, height: height)
-            cursorX += width + DesignSystem.blockSpacing
-            rowHeight = max(rowHeight, height)
+        func finishCurrentPage() {
+            pages.append(PageLayout(id: pageIndex, pageIndex: pageIndex, elements: currentPageElements))
+            pageIndex += 1
+            currentPageElements = []
+            cursorX = 0
+            cursorY = 0
+            rowHeight = 0
         }
 
-        let contentHeight = elements.isEmpty ? 0 : cursorY + rowHeight
-        return (frames, contentHeight)
+        for element in elements {
+            let width = min(max(element.width, DesignSystem.minBlockWidth), effectiveWidth)
+
+            if element.kind == .text {
+                if cursorX > 0 {
+                    cursorX = 0
+                    cursorY += rowHeight + DesignSystem.blockSpacing
+                    rowHeight = 0
+                }
+
+                var remainingText = element.text ?? ""
+                var sliceIndex = 0
+
+                if remainingText.isEmpty {
+                    let availableY = effectiveContentHeight - cursorY
+                    if availableY < 40 {
+                        finishCurrentPage()
+                    }
+                    let height = DesignSystem.minBlockHeight
+                    let sliceID = "\(element.id.uuidString)_slice_\(sliceIndex)"
+                    let frame = CGRect(x: 0, y: cursorY, width: width, height: height)
+                    currentPageElements.append(
+                        PlacedElement(
+                            id: sliceID,
+                            canonicalID: element.id,
+                            kind: .text,
+                            frame: frame,
+                            textSubstring: "",
+                            isSplitText: false,
+                            sliceIndex: 0
+                        )
+                    )
+                    cursorY += height + DesignSystem.blockSpacing
+                    cursorX = 0
+                    rowHeight = 0
+                } else {
+                    while !remainingText.isEmpty {
+                        var availableY = effectiveContentHeight - cursorY
+                        if availableY < 24 {
+                            finishCurrentPage()
+                            availableY = effectiveContentHeight
+                        }
+
+                        let textContentWidth = max(width - DesignSystem.blockContentPadding * 2, 1)
+                        let textMaxHeight = max(availableY - DesignSystem.blockContentPadding * 2, 1)
+                        let fitLen = TextSplitter.fittingLength(for: remainingText, width: textContentWidth, maxHeight: textMaxHeight)
+
+                        if fitLen >= remainingText.count {
+                            let measured = TextSplitter.measureHeight(for: remainingText, width: textContentWidth) + DesignSystem.blockContentPadding * 2
+                            let height = max(measured, DesignSystem.minBlockHeight)
+                            let sliceID = "\(element.id.uuidString)_slice_\(sliceIndex)"
+                            let frame = CGRect(x: 0, y: cursorY, width: width, height: height)
+                            let isSplit = (sliceIndex > 0)
+                            currentPageElements.append(
+                                PlacedElement(
+                                    id: sliceID,
+                                    canonicalID: element.id,
+                                    kind: .text,
+                                    frame: frame,
+                                    textSubstring: remainingText,
+                                    isSplitText: isSplit,
+                                    sliceIndex: sliceIndex
+                                )
+                            )
+                            cursorY += height + DesignSystem.blockSpacing
+                            cursorX = 0
+                            rowHeight = 0
+                            remainingText = ""
+                        } else if fitLen > 0 {
+                            let fittingIndex = remainingText.index(remainingText.startIndex, offsetBy: fitLen)
+                            let fittingText = String(remainingText[..<fittingIndex])
+                            remainingText = String(remainingText[fittingIndex...])
+
+                            let measured = TextSplitter.measureHeight(for: fittingText, width: textContentWidth) + DesignSystem.blockContentPadding * 2
+                            let height = max(measured, DesignSystem.minBlockHeight)
+                            let sliceID = "\(element.id.uuidString)_slice_\(sliceIndex)"
+                            let frame = CGRect(x: 0, y: cursorY, width: width, height: height)
+                            currentPageElements.append(
+                                PlacedElement(
+                                    id: sliceID,
+                                    canonicalID: element.id,
+                                    kind: .text,
+                                    frame: frame,
+                                    textSubstring: fittingText,
+                                    isSplitText: true,
+                                    sliceIndex: sliceIndex
+                                )
+                            )
+                            sliceIndex += 1
+                            finishCurrentPage()
+                        } else {
+                            finishCurrentPage()
+                        }
+                    }
+                }
+            } else {
+                var height = max(element.height, DesignSystem.minBlockHeight)
+                if height > effectiveContentHeight {
+                    height = effectiveContentHeight
+                }
+
+                if cursorX > 0 && cursorX + width > effectiveWidth + 0.5 {
+                    cursorX = 0
+                    cursorY += rowHeight + DesignSystem.blockSpacing
+                    rowHeight = 0
+                }
+
+                if cursorY + height > effectiveContentHeight && cursorY > 0 {
+                    finishCurrentPage()
+                }
+
+                let sliceID = "\(element.id.uuidString)_slice_0"
+                let frame = CGRect(x: cursorX, y: cursorY, width: width, height: height)
+                currentPageElements.append(
+                    PlacedElement(
+                        id: sliceID,
+                        canonicalID: element.id,
+                        kind: element.kind,
+                        frame: frame,
+                        textSubstring: nil,
+                        isSplitText: false,
+                        sliceIndex: 0
+                    )
+                )
+                cursorX += width + DesignSystem.blockSpacing
+                rowHeight = max(rowHeight, height)
+            }
+        }
+
+        if !currentPageElements.isEmpty || pages.isEmpty {
+            pages.append(PageLayout(id: pageIndex, pageIndex: pageIndex, elements: currentPageElements))
+        }
+
+        return pages
+    }
+
+    func updateTextSlice(canonicalID: UUID, sliceIndex: Int, newText: String, slices: [String]) {
+        guard let idx = elements.firstIndex(where: { $0.id == canonicalID }) else { return }
+        var updatedSlices = slices
+        if sliceIndex < updatedSlices.count {
+            updatedSlices[sliceIndex] = newText
+        } else {
+            updatedSlices.append(newText)
+        }
+        let fullText = updatedSlices.joined()
+        if elements[idx].text != fullText {
+            elements[idx].text = fullText
+        }
     }
 
     func setTextHeight(_ id: UUID, height: CGFloat) {
@@ -106,13 +241,14 @@ final class CanvasStore: ObservableObject {
         textHeights[id] = rounded
     }
 
-    // MARK: - Adding blocks — every new block defaults to full container width
+    // MARK: - Adding blocks — default width matches container width
 
     @discardableResult
     func addText() -> CanvasElement {
         let element = CanvasElement(kind: .text, width: containerWidth, height: DesignSystem.minBlockHeight, text: "")
         elements.append(element)
         selectedElementID = element.id
+        focusLastPage()
         return element
     }
 
@@ -129,6 +265,7 @@ final class CanvasStore: ObservableObject {
         let element = CanvasElement(kind: .image, width: containerWidth, height: 260, imageFileName: fileName)
         elements.append(element)
         selectedElementID = element.id
+        focusLastPage()
         return element
     }
 
@@ -151,6 +288,7 @@ final class CanvasStore: ObservableObject {
         )
         elements.append(element)
         selectedElementID = element.id
+        focusLastPage()
         return element
     }
 
@@ -162,7 +300,15 @@ final class CanvasStore: ObservableObject {
         drawings[element.id] = PKDrawing()
         drawingContentSizes[element.id] = size
         selectedElementID = element.id
+        focusLastPage()
         return element
+    }
+
+    private func focusLastPage() {
+        let pages = layoutPages(pageWidth: containerWidth + DesignSystem.pagePadding * 2, pageHeight: 800)
+        if let lastPage = pages.last {
+            currentPageIndex = lastPage.pageIndex
+        }
     }
 
     // MARK: - Resizing — the only way a block's size ever changes

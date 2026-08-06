@@ -3,24 +3,28 @@ import SwiftUI
 struct TextElementView: View {
     @ObservedObject var store: CanvasStore
     var element: CanvasElement
-    /// Current width this block has been laid out at — needed to
-    /// measure wrapped text height correctly.
+    var placed: PlacedElement
     var width: CGFloat
     var isActive: Bool
+    var slices: [String]
 
     private var textBinding: Binding<String> {
         Binding(
-            get: { element.text ?? "" },
+            get: { placed.textSubstring ?? element.text ?? "" },
             set: { newValue in
-                var updated = element
-                updated.text = newValue
-                store.update(updated)
+                store.updateTextSlice(
+                    canonicalID: element.id,
+                    sliceIndex: placed.sliceIndex,
+                    newText: newValue,
+                    slices: slices
+                )
             }
         )
     }
 
     var body: some View {
         let contentWidth = max(width - DesignSystem.blockContentPadding * 2, 1)
+        let textValue = textBinding.wrappedValue
 
         AutoGrowingTextView(
             text: textBinding,
@@ -30,13 +34,10 @@ struct TextElementView: View {
                 store.setTextHeight(element.id, height: measured)
             }
         )
-        // Belt-and-braces alongside AutoGrowingTextView's own
-        // sizeThatFits: pin the width explicitly so text is always
-        // forced to wrap within the block, never past it.
         .frame(width: contentWidth, alignment: .topLeading)
         .padding(DesignSystem.blockContentPadding)
         .overlay(alignment: .topLeading) {
-            if (element.text ?? "").isEmpty {
+            if textValue.isEmpty && placed.sliceIndex == 0 {
                 Text("Type here…")
                     .foregroundStyle(.secondary)
                     .padding(DesignSystem.blockContentPadding)

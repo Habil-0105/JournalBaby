@@ -14,14 +14,16 @@ import SwiftUI
 /// - a delete button (top-right).
 struct ElementContainerView: View {
     @ObservedObject var store: CanvasStore
+    var placed: PlacedElement
     var element: CanvasElement
-    /// The frame `CanvasStore.layout()` assigned this block for the
-    /// current render pass.
-    var frame: CGRect
+    var slices: [String]
 
     @State private var widthDelta: CGFloat = 0
     @State private var heightDelta: CGFloat = 0
 
+    private var frame: CGRect {
+        placed.frame
+    }
     private var isSelected: Bool {
         store.selectedElementID == element.id
     }
@@ -70,10 +72,6 @@ struct ElementContainerView: View {
         }
         .overlay(alignment: .bottomTrailing) {
             if isSelected && isDrawing {
-                // Drawings get ONE handle, not independent width/height
-                // ones: dragging it scales both dimensions together
-                // (locked aspect ratio) so the frame and its strokes can
-                // resize as a single unit without distortion.
                 cornerScaleHandle.offset(x: 4, y: 4)
             }
         }
@@ -83,7 +81,14 @@ struct ElementContainerView: View {
     private var content: some View {
         switch element.kind {
         case .text:
-            TextElementView(store: store, element: element, width: liveWidth, isActive: isSelected)
+            TextElementView(
+                store: store,
+                element: element,
+                placed: placed,
+                width: liveWidth,
+                isActive: isSelected,
+                slices: slices
+            )
         case .image:
             ImageElementView(store: store, element: element)
         case .audio:

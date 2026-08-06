@@ -53,3 +53,22 @@ struct CanvasElement: Identifiable, Codable, Equatable {
         self.audioDuration = audioDuration
     }
 }
+
+/// Represents a block slice laid out on a specific page.
+struct PlacedElement: Identifiable, Equatable {
+    let id: String
+    let canonicalID: UUID
+    let kind: ElementKind
+    let frame: CGRect
+    let textSubstring: String?
+    let isSplitText: Bool
+    let sliceIndex: Int
+}
+
+/// Represents a single book page layout containing placed block slices.
+struct PageLayout: Identifiable, Equatable {
+    let id: Int
+    let pageIndex: Int
+    let elements: [PlacedElement]
+}
+

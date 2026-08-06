@@ -9,15 +9,27 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             GeometryReader { geo in
-                let containerWidth = max(geo.size.width - DesignSystem.pagePadding * 2, 0)
+                let pages = store.layoutPages(pageWidth: geo.size.width, pageHeight: geo.size.height)
+                let pageCount = max(pages.count, 1)
 
-                ScrollView(.vertical, showsIndicators: true) {
-                    PageView(store: store, pageWidth: geo.size.width, minHeight: geo.size.height)
+                TabView(selection: $store.currentPageIndex) {
+                    ForEach(pages) { page in
+                        PageView(
+                            store: store,
+                            pageLayout: page,
+                            pageWidth: geo.size.width,
+                            pageHeight: geo.size.height,
+                            totalPages: pageCount
+                        )
+                        .tag(page.pageIndex)
+                    }
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
                 .background(Color(.systemGroupedBackground))
-                .onAppear { store.updateContainerWidth(containerWidth) }
-                .onChange(of: geo.size) { _, _ in
-                    store.updateContainerWidth(containerWidth)
+                .onChange(of: pages.count) { _, newCount in
+                    if store.currentPageIndex >= newCount {
+                        store.currentPageIndex = max(newCount - 1, 0)
+                    }
                 }
             }
             .navigationTitle("Journal")

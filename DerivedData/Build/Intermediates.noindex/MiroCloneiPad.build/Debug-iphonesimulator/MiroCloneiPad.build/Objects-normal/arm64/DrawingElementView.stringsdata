@@ -1,0 +1,16 @@
+{
+  "source": "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Elements/DrawingElementView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Tap, then draw",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 34
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -1,0 +1,159 @@
+{
+  "" : {
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/MiroCloneiPad-primary.dia",
+    "emit-module-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/MiroCloneiPad-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/MiroCloneiPad-primary-emit-module.dia",
+    "pch" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/MiroCloneiPad-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/MiroCloneiPad-primary.swiftdeps"
+  },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/GeneratedAssetSymbols.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/GeneratedAssetSymbols.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/GeneratedAssetSymbols~partial.swiftmodule"
+  },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Canvas/ElementContainerView.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ElementContainerView.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ElementContainerView.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ElementContainerView.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ElementContainerView.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ElementContainerView.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ElementContainerView.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ElementContainerView.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ElementContainerView~partial.swiftmodule"
+  },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Canvas/PageView.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/PageView.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/PageView.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/PageView.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/PageView.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/PageView.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/PageView.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/PageView.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/PageView~partial.swiftmodule"
+  },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Canvas/ScribbleCanvasView.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ScribbleCanvasView.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ScribbleCanvasView.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ScribbleCanvasView.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ScribbleCanvasView.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ScribbleCanvasView.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ScribbleCanvasView.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ScribbleCanvasView.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ScribbleCanvasView~partial.swiftmodule"
+  },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/ContentView.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ContentView.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ContentView.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ContentView.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ContentView.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ContentView.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ContentView.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ContentView.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ContentView~partial.swiftmodule"
+  },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/DesignSystem.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/DesignSystem.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/DesignSystem.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/DesignSystem.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/DesignSystem.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/DesignSystem.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/DesignSystem.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/DesignSystem.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/DesignSystem~partial.swiftmodule"
+  },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Elements/AudioElementView.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AudioElementView.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AudioElementView.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AudioElementView.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AudioElementView.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AudioElementView.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AudioElementView.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AudioElementView.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AudioElementView~partial.swiftmodule"
+  },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Elements/AudioRecorderSheet.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AudioRecorderSheet.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AudioRecorderSheet.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AudioRecorderSheet.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AudioRecorderSheet.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AudioRecorderSheet.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AudioRecorderSheet.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AudioRecorderSheet.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AudioRecorderSheet~partial.swiftmodule"
+  },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Elements/AutoGrowingTextView.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AutoGrowingTextView.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AutoGrowingTextView.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AutoGrowingTextView.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AutoGrowingTextView.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AutoGrowingTextView.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AutoGrowingTextView.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AutoGrowingTextView.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/AutoGrowingTextView~partial.swiftmodule"
+  },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Elements/DrawingElementView.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/DrawingElementView.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/DrawingElementView.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/DrawingElementView.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/DrawingElementView.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/DrawingElementView.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/DrawingElementView.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/DrawingElementView.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/DrawingElementView~partial.swiftmodule"
+  },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Elements/ImageElementView.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ImageElementView.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ImageElementView.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ImageElementView.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ImageElementView.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ImageElementView.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ImageElementView.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ImageElementView.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/ImageElementView~partial.swiftmodule"
+  },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Elements/TextElementView.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/TextElementView.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/TextElementView.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/TextElementView.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/TextElementView.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/TextElementView.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/TextElementView.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/TextElementView.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/TextElementView~partial.swiftmodule"
+  },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/MiroCloneApp.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/MiroCloneApp.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/MiroCloneApp.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/MiroCloneApp.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/MiroCloneApp.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/MiroCloneApp.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/MiroCloneApp.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/MiroCloneApp.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/MiroCloneApp~partial.swiftmodule"
+  },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Models/CanvasElement.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/CanvasElement.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/CanvasElement.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/CanvasElement.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/CanvasElement.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/CanvasElement.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/CanvasElement.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/CanvasElement.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/CanvasElement~partial.swiftmodule"
+  },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Models/CanvasStore.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/CanvasStore.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/CanvasStore.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/CanvasStore.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/CanvasStore.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/CanvasStore.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/CanvasStore.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/CanvasStore.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/x86_64/CanvasStore~partial.swiftmodule"
+  }
+}

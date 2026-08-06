@@ -23,4 +23,9 @@ enum DesignSystem {
 
     static let minBlockWidth: CGFloat = 160
     static let minBlockHeight: CGFloat = 90
+
+    /// Fixed vertical space allocated for page header inside physical page card.
+    static let pageHeaderHeight: CGFloat = 36
+    static let pageShadowRadius: CGFloat = 8
+    static let pageShadowY: CGFloat = 4
 }
