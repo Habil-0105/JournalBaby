@@ -12,19 +12,12 @@ struct ContentView: View {
                 let pages = store.layoutPages(pageWidth: geo.size.width, pageHeight: geo.size.height)
                 let pageCount = max(pages.count, 1)
 
-                TabView(selection: $store.currentPageIndex) {
-                    ForEach(pages) { page in
-                        PageView(
-                            store: store,
-                            pageLayout: page,
-                            pageWidth: geo.size.width,
-                            pageHeight: geo.size.height,
-                            totalPages: pageCount
-                        )
-                        .tag(page.pageIndex)
-                    }
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+                BookPageCurlView(
+                    store: store,
+                    pages: pages,
+                    pageWidth: geo.size.width,
+                    pageHeight: geo.size.height
+                )
                 .background(Color(.systemGroupedBackground))
                 .onChange(of: pages.count) { _, newCount in
                     if store.currentPageIndex >= newCount {

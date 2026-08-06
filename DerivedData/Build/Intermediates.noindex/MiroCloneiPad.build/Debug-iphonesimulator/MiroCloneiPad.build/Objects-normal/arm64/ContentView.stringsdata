@@ -7,7 +7,7 @@
         "key": "Journal",
         "location": {
           "startingColumn": 30,
-          "startingLine": 35
+          "startingLine": 28
         }
       },
       {
@@ -15,7 +15,7 @@
         "key": "Add Text",
         "location": {
           "startingColumn": 31,
-          "startingLine": 42
+          "startingLine": 35
         }
       },
       {
@@ -23,7 +23,7 @@
         "key": "Add Image",
         "location": {
           "startingColumn": 31,
-          "startingLine": 46
+          "startingLine": 39
         }
       },
       {
@@ -31,7 +31,7 @@
         "key": "Add Audio",
         "location": {
           "startingColumn": 31,
-          "startingLine": 52
+          "startingLine": 45
         }
       },
       {
@@ -39,7 +39,7 @@
         "key": "Add Drawing",
         "location": {
           "startingColumn": 31,
-          "startingLine": 58
+          "startingLine": 51
         }
       }
     ]

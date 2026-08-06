@@ -67,6 +67,11 @@ struct PageView: View {
                 .fill(Color(.systemBackground))
                 .shadow(color: Color.black.opacity(0.1), radius: DesignSystem.pageShadowRadius, x: 0, y: DesignSystem.pageShadowY)
         )
+        .overlay(alignment: .bottomTrailing) {
+            if pageLayout.pageIndex < totalPages - 1 {
+                DogEarCornerView()
+            }
+        }
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.cornerRadius))
         .coordinateSpace(name: "page")
         .contentShape(Rectangle())
@@ -74,5 +79,51 @@ struct PageView: View {
             store.selectedElementID = nil
         }
         .animation(.easeInOut(duration: 0.2), value: pageLayout)
+    }
+}
+
+/// Visual dog-ear corner curl hint displayed on the bottom-right of a page.
+struct DogEarCornerView: View {
+    var size: CGFloat = 36
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            Path { path in
+                path.move(to: CGPoint(x: 0, y: size))
+                path.addLine(to: CGPoint(x: size, y: 0))
+                path.addLine(to: CGPoint(x: size, y: size))
+                path.closeSubpath()
+            }
+            .fill(
+                LinearGradient(
+                    colors: [Color.black.opacity(0.22), Color.black.opacity(0.02)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+
+            Path { path in
+                path.move(to: CGPoint(x: 0, y: size))
+                path.addLine(to: CGPoint(x: size, y: 0))
+                path.addLine(to: CGPoint(x: size, y: size))
+                path.closeSubpath()
+            }
+            .fill(
+                LinearGradient(
+                    colors: [Color(.systemGroupedBackground), Color(.secondarySystemBackground)],
+                    startPoint: .bottomTrailing,
+                    endPoint: .topLeading
+                )
+            )
+            .overlay(
+                Path { path in
+                    path.move(to: CGPoint(x: 0, y: size))
+                    path.addLine(to: CGPoint(x: size, y: 0))
+                }
+                .stroke(Color.primary.opacity(0.2), lineWidth: 1.5)
+            )
+        }
+        .frame(width: size, height: size)
+        .allowsHitTesting(false)
     }
 }
