@@ -1,80 +1,67 @@
-//
-//  ContentView.swift
-//  MiroCloneiPad
-//
-//  Created by habil on 06/08/26.
-//
-
 import SwiftUI
-import SwiftData
+import PhotosUI
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @StateObject private var store = CanvasStore()
+    @State private var photosPickerItem: PhotosPickerItem?
+    @State private var showAudioSheet = false
 
     var body: some View {
-        NavigationViewWrapper {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
+        NavigationStack {
+            GeometryReader { geo in
+                let containerWidth = max(geo.size.width - DesignSystem.pagePadding * 2, 0)
+
+                ScrollView(.vertical, showsIndicators: true) {
+                    PageView(store: store, pageWidth: geo.size.width, minHeight: geo.size.height)
                 }
-                .onDelete(perform: deleteItems)
+                .background(Color(.systemGroupedBackground))
+                .onAppear { store.updateContainerWidth(containerWidth) }
+                .onChange(of: geo.size) { _, _ in
+                    store.updateContainerWidth(containerWidth)
+                }
             }
-#if os(macOS)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
-#endif
+            .navigationTitle("Journal")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-#if os(iOS)
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-#endif
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button {
+                        store.addText()
+                    } label: {
+                        Label("Add Text", systemImage: "textformat")
+                    }
+
+                    PhotosPicker(selection: $photosPickerItem, matching: .images) {
+                        Label("Add Image", systemImage: "photo")
+                    }
+
+                    Button {
+                        showAudioSheet = true
+                    } label: {
+                        Label("Add Audio", systemImage: "mic")
+                    }
+
+                    Button {
+                        store.addDrawing()
+                    } label: {
+                        Label("Add Drawing", systemImage: "scribble")
                     }
                 }
             }
-        }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+            .sheet(isPresented: $showAudioSheet) {
+                AudioRecorderSheet(store: store)
+            }
+            .onChange(of: photosPickerItem) { _, newItem in
+                Task {
+                    if let newItem, let data = try? await newItem.loadTransferable(type: Data.self) {
+                        store.addImage(data: data)
+                    }
+                    photosPickerItem = nil
+                }
             }
         }
-    }
-}
-
-fileprivate struct NavigationViewWrapper<Content: View>: View {
-    let content: () -> Content
-
-    var body: some View {
-#if os(macOS)
-        NavigationSplitView {
-            content()
-        } detail: {
-            Text("Select an item")
-        }
-#else
-        content()
-#endif
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
 }
