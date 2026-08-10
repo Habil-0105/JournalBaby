@@ -241,13 +241,6 @@ final class CanvasStore: ObservableObject {
         elements[idx].text = text
     }
 
-    // MARK: - Scribble
-
-    /// Commits a finished freehand stroke to the board's drawing layer.
-    func appendStroke(_ stroke: PKStroke) {
-        scribble = PKDrawing(strokes: scribble.strokes + [stroke])
-    }
-
     // MARK: - Removal
 
     func remove(_ id: UUID) {

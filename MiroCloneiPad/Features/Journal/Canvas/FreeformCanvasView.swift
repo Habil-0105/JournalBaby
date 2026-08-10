@@ -1,15 +1,5 @@
 import SwiftUI
 
-/// The single freeform canvas. There is no paging, no flow layout, and no
-/// derived positioning: each element is rendered at its own
-/// `element.position`, hit-tested there, and moved directly by the drag
-/// gesture writing back to that same `position`.
-///
-/// Layer order (bottom → top):
-/// 1. the board surface
-/// 2. committed scribble strokes (a drawing layer, not an element)
-/// 3. the freeform elements
-/// 4. the Draw-mode input surface (only while Draw mode is active)
 struct FreeformCanvasView: View {
     @ObservedObject var store: CanvasStore
     var size: CGSize
@@ -32,29 +22,25 @@ struct FreeformCanvasView: View {
             RoundedRectangle(cornerRadius: DesignSystem.cornerRadius)
                 .fill(Color(.systemBackground))
 
-            ScribbleCanvasView(drawing: store.scribble)
+            // Sits below the elements. Non-interactive while Draw mode is
+            // off (elements handle their own taps/drags on top of it);
+            // becomes the sole touch target once Draw mode turns on,
+            // because the elements layer below stops hit-testing.
+            ScribbleCanvasView(store: store)
 
             ForEach(store.elements) { element in
                 ElementContainerView(store: store, element: element)
                     .offset(x: element.position.x, y: element.position.y)
             }
-
-            if store.drawMode {
-                DrawInputLayer(store: store, elementFrames: hitTargets)
-            }
+            .allowsHitTesting(!store.drawMode)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.cornerRadius))
         .contentShape(RoundedRectangle(cornerRadius: DesignSystem.cornerRadius))
         .onTapGesture {
-            store.select(nil)
+            if !store.drawMode {
+                store.select(nil)
+            }
         }
-    }
-
-    /// Current frames of all elements in canvas coordinates — what Draw
-    /// mode's input surface hit-tests against. Driven purely by
-    /// `element.position`, so it always matches what's on screen.
-    private var hitTargets: [(id: UUID, frame: CGRect)] {
-        store.elements.map { ($0.id, $0.frame) }
     }
 }
