@@ -5,8 +5,13 @@ struct TextElementView: View {
     var element: CanvasElement
     var placed: PlacedElement
     var width: CGFloat
-    var isActive: Bool
     var slices: [String]
+    /// Called when the underlying `UITextView` becomes first responder
+    /// (`focused = true`) or resigns first responder (`focused = false`).
+    /// The element container uses this to keep the selection ring in
+    /// sync with the user's actual focus, without attaching a body tap
+    /// that would compete with the text view's first-responder chain.
+    var onFocusChange: (Bool) -> Void
 
     private var textBinding: Binding<String> {
         Binding(
@@ -28,8 +33,9 @@ struct TextElementView: View {
 
         AutoGrowingTextView(
             text: textBinding,
-            isEditable: isActive,
+            isEditable: true,
             width: contentWidth,
+            onFocusChange: onFocusChange,
             onHeightChange: { measured in
                 store.setTextHeight(element.id, height: measured)
             }

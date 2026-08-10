@@ -1,28 +1,46 @@
 import Foundation
 import CoreGraphics
 
+/// The kinds of element blocks that live on a journal page.
+///
+/// Note that hand-drawn strokes (the "Scribble" tool) are NOT an element
+/// kind. Strokes belong to the page itself, not to a movable/resizable
+/// block — see `CanvasStore.pageDrawings` for the page-level drawing
+/// layer.
 enum ElementKind: String, Codable {
     case text
     case image
     case audio
-    case drawing
 }
 
-/// A single block. Notice there's no `frame` or `position` here anymore —
-/// only `width`/`height`. On-screen position is always *derived* by
-/// `CanvasStore`'s flow-layout engine from a block's order in `elements`
-/// plus its size, never stored. That's what makes "resizing one block
-/// reflows the rest" automatic: change a size, the whole layout
-/// recomputes, and overlap is structurally impossible.
+/// A single block. Position is **stored**, not derived — the free-canvas
+/// model. `x`/`y` are the top-left in page coordinates (the coordinate
+/// space the page's `coordinateSpace(name: "page")` exposes). `zIndex`
+/// is the relative stacking order between blocks of the same page
+/// (later-created elements default to a higher `zIndex`, so newer
+/// blocks appear on top). Width/height remain user-resizable; size and
+/// position are independent — moving one block does not move any other.
 struct CanvasElement: Identifiable, Codable, Equatable {
     let id: UUID
     var kind: ElementKind
 
-    /// User-adjustable target width, clamped against the container width
-    /// at layout time (so it stays valid even if the screen resizes).
+    /// Top-left X in page coordinates. 0 is the page's left edge after
+    /// its outer padding.
+    var x: CGFloat
+
+    /// Top-left Y in page coordinates.
+    var y: CGFloat
+
+    /// Stacking order. Higher = drawn on top. The selected block is
+    /// temporarily promoted at render time without mutating this value
+    /// in the store.
+    var zIndex: Int
+
+    /// User-resizable width. Free-form canvas: only the `minBlockWidth`
+    /// floor applies — there is no upper bound imposed by the container.
     var width: CGFloat
 
-    /// User-adjustable height for image/audio/drawing blocks. Ignored
+    /// User-resizable height for image/audio/drawing blocks. Ignored
     /// for `.text` — its height is measured from its content instead
     /// (see `CanvasStore.textHeights`), so there is no fixed height to
     /// store for it.
@@ -36,6 +54,9 @@ struct CanvasElement: Identifiable, Codable, Equatable {
     init(
         id: UUID = UUID(),
         kind: ElementKind,
+        x: CGFloat = 0,
+        y: CGFloat = 0,
+        zIndex: Int = 0,
         width: CGFloat,
         height: CGFloat,
         text: String? = nil,
@@ -45,6 +66,9 @@ struct CanvasElement: Identifiable, Codable, Equatable {
     ) {
         self.id = id
         self.kind = kind
+        self.x = x
+        self.y = y
+        self.zIndex = zIndex
         self.width = width
         self.height = height
         self.text = text
@@ -55,6 +79,12 @@ struct CanvasElement: Identifiable, Codable, Equatable {
 }
 
 /// Represents a block slice laid out on a specific page.
+///
+/// `frame` now reflects the element's **stored** position, not a
+/// derived row-wrap position. The size is still driven by the canonical
+/// `CanvasElement.width/height` for non-text blocks and by
+/// `TextSplitter` for text slices (text-slicing across pages is the one
+/// layout-y thing that survives; position does not).
 struct PlacedElement: Identifiable, Equatable {
     let id: String
     let canonicalID: UUID

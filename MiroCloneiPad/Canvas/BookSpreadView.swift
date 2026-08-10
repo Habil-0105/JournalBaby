@@ -9,6 +9,9 @@ struct BookSpreadView: View {
     var pageWidth: CGFloat
     var pageHeight: CGFloat
     var totalPages: Int
+    /// Forwarded so `PageView` can light up its page-level drawing
+    /// canvas when the Scribble tool is active.
+    var scribbleMode: Bool
 
     var body: some View {
         if let page = spread.leftPage {
@@ -17,7 +20,8 @@ struct BookSpreadView: View {
                 pageLayout: page,
                 pageWidth: pageWidth,
                 pageHeight: pageHeight,
-                totalPages: totalPages
+                totalPages: totalPages,
+                scribbleMode: scribbleMode
             )
         }
     }

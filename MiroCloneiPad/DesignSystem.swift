@@ -15,8 +15,8 @@ enum DesignSystem {
     static let blockSpacing: CGFloat = 16
 
     /// Gap between a block's edge and its own content (text, audio
-    /// controls, etc). Images and drawings intentionally skip this and
-    /// bleed edge-to-edge within their block.
+    /// controls, etc). Images intentionally skip this and bleed
+    /// edge-to-edge within their block.
     static let blockContentPadding: CGFloat = 16
 
     static let cornerRadius: CGFloat = 16

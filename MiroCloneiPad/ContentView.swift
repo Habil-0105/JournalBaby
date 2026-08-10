@@ -6,6 +6,12 @@ struct ContentView: View {
     @StateObject private var store = CanvasStore()
     @State private var photosPickerItem: PhotosPickerItem?
     @State private var showAudioSheet = false
+    /// True while the Scribble tool is active. While on, every
+    /// `PageView` renders its page-level PencilKit canvas with
+    /// `isUserInteractionEnabled = true`, so taps on the page draw
+    /// strokes. While off, the canvas is a non-tap-through overlay
+    /// and normal element gestures work.
+    @State private var scribbleMode: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -20,15 +26,13 @@ struct ContentView: View {
                     spreads: spreads,
                     pageWidth: geo.size.width,
                     pageHeight: geo.size.height,
-                    totalPages: totalPages
+                    totalPages: totalPages,
+                    scribbleMode: scribbleMode
                 )
                 .background(Color(.systemGroupedBackground))
                 .onChange(of: pages.count) { _, newCount in
                     if store.currentPageIndex >= newCount {
                         store.currentPageIndex = max(newCount - 1, 0)
-                        print("111")
-                    } else {
-                        print("222")
                     }
                 }
             }
@@ -53,10 +57,14 @@ struct ContentView: View {
                     }
 
                     Button {
-                        store.addDrawing()
+                        scribbleMode.toggle()
                     } label: {
-                        Label("Add Drawing", systemImage: "scribble")
+                        Label(
+                            scribbleMode ? "Done Drawing" : "Scribble",
+                            systemImage: scribbleMode ? "checkmark.circle.fill" : "scribble"
+                        )
                     }
+                    .tint(scribbleMode ? .accentColor : nil)
                 }
             }
             .sheet(isPresented: $showAudioSheet) {

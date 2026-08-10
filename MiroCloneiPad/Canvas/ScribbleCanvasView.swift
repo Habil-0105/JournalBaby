@@ -1,10 +1,24 @@
 import SwiftUI
 import PencilKit
 
-/// A PencilKit canvas that fills whatever frame it's given and clips its
-/// contents. Used by `DrawingElementView`, sized to that block's frame —
-/// because the view itself never extends beyond its parent's bounds, it's
-/// physically impossible to scribble outside the block.
+/// The page-level PencilKit canvas. Sized to the page's drawable rect
+/// by `PageView`, so its internal coordinate system IS the page's
+/// drawing coordinate space — strokes recorded here are in
+/// "page coordinates", independent of any element block.
+///
+/// `isActive` controls whether the canvas intercepts touches:
+/// - **Scribble mode on** (`isActive == true`): the canvas is
+///   interactive and PencilKit captures touches, producing strokes.
+///   During drawing, no element gestures compete for the touch.
+/// - **Scribble mode off** (`isActive == false`): the canvas is a
+///   non-interactive overlay. Touches fall straight through to the
+///   page / blocks below, preserving the existing Text / Image / Audio
+///   interactions.
+///
+/// Strokes bind through to `CanvasStore.pageDrawings[pageIndex]` via
+/// the `drawing` binding. The delegate's
+/// `canvasViewDrawingDidChange` callback is the only path that writes
+/// back into the store.
 struct ScribbleCanvasView: UIViewRepresentable {
     @Binding var drawing: PKDrawing
     var isActive: Bool

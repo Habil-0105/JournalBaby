@@ -10,6 +10,10 @@ struct BookPageCurlView: UIViewControllerRepresentable {
     var pageWidth: CGFloat
     var pageHeight: CGFloat
     var totalPages: Int
+    /// Forwarded by `ContentView` from its `@State scribbleMode` so the
+    /// page's `PKCanvasView` only intercepts touches while the Scribble
+    /// tool is active.
+    var scribbleMode: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -54,7 +58,8 @@ struct BookPageCurlView: UIViewControllerRepresentable {
                     spread: spread,
                     pageWidth: parent.pageWidth,
                     pageHeight: parent.pageHeight,
-                    totalPages: parent.totalPages
+                    totalPages: parent.totalPages,
+                    scribbleMode: parent.scribbleMode
                 )
             )
 
@@ -74,7 +79,8 @@ struct BookPageCurlView: UIViewControllerRepresentable {
                         spread: spread,
                         pageWidth: parent.pageWidth,
                         pageHeight: parent.pageHeight,
-                        totalPages: parent.totalPages
+                        totalPages: parent.totalPages,
+                        scribbleMode: parent.scribbleMode
                     )
                 )
             } else {

@@ -1,25 +1,48 @@
 import SwiftUI
 
-/// Wraps a block at the frame `PageView` computed for it via
-/// `CanvasStore.layout()`. There's no move handle anymore — position is
-/// always derived from order + size, never chosen by dragging. What's
-/// left:
+/// Wraps a block at its stored `(x, y)` page coordinate and routes the
+/// gestures it owns.
 ///
-/// - tap-to-select (shows the handles below and, for text/drawing,
-///   switches that block into its interactive editing state)
-/// - a **width handle** (right edge, all kinds) — drag to resize width;
-///   this is what triggers reflow of every block after it.
-/// - a **height handle** (bottom edge, all kinds except text) — text has
-///   no height handle because its height is automatic.
-/// - a delete button (top-right).
+/// Gesture model per kind:
+///
+/// - **Text** — `AutoGrowingTextView`'s internal `UITextView` is the
+///   text-input surface. Taps and typing land in it directly through
+///   UIKit's first-responder chain. The element has NO body tap
+///   gesture of its own — instead, when the text view gains or loses
+///   first-responder status, the delegate reports it back to the
+///   store, so the selection ring follows the active text block
+///   automatically. A drag with movement above the tap threshold
+///   moves the block.
+///
+/// - **Image** — taps and drags on the image both work. A tap
+///   selects; a drag moves. The image itself has no internal gestures
+///   to fight with.
+///
+/// - **Audio** — taps on the play/pause button toggle playback. Taps
+///   anywhere else on the block select it. A drag from anywhere on
+///   the block (including from the button area when the drag starts
+///   moving) moves the element. SwiftUI's hit-test routes the tap to
+///   the inner `Button` because the button is a deeper view; once a
+///   finger starts moving, the parent's drag wins.
+///
+/// (Drawing / scribble is NOT an element. Strokes belong to the page
+/// itself and are handled by `PageView` + `ScribbleCanvasView` —
+/// nothing on this view is aware of the Scribble tool.)
+///
+/// Resize handles (`widthHandle`, `heightHandle`) keep their own
+/// `.gesture(...)` and never start a move.
 struct ElementContainerView: View {
     @ObservedObject var store: CanvasStore
     var placed: PlacedElement
     var element: CanvasElement
-    var slices: [String]
 
     @State private var widthDelta: CGFloat = 0
     @State private var heightDelta: CGFloat = 0
+    /// Live drag preview. Commits to `store.setPosition` on `.onEnded`.
+    @State private var dragOffsetX: CGFloat = 0
+    @State private var dragOffsetY: CGFloat = 0
+    /// True while the block is being lifted (mid-drag).
+    @State private var isLifted: Bool = false
 
     private var frame: CGRect {
         placed.frame
@@ -30,19 +53,16 @@ struct ElementContainerView: View {
     private var isText: Bool {
         element.kind == .text
     }
-    private var isDrawing: Bool {
-        element.kind == .drawing
-    }
 
     private var liveWidth: CGFloat {
-        min(max(frame.width + widthDelta, DesignSystem.minBlockWidth), store.containerWidth)
+        max(frame.width + widthDelta, DesignSystem.minBlockWidth)
     }
     private var liveHeight: CGFloat {
         isText ? frame.height : max(frame.height + heightDelta, DesignSystem.minBlockHeight)
     }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: DesignSystem.cornerRadius)
                 .fill(Color(.secondarySystemBackground))
             content
@@ -52,27 +72,40 @@ struct ElementContainerView: View {
         }
         .frame(width: liveWidth, height: liveHeight)
         .contentShape(RoundedRectangle(cornerRadius: DesignSystem.cornerRadius))
-        .onTapGesture {
-            store.selectedElementID = element.id
-        }
+        .offset(x: dragOffsetX, y: dragOffsetY)
+        .scaleEffect(isLifted ? 1.03 : 1.0)
+        .shadow(color: isLifted ? Color.black.opacity(0.20) : .clear, radius: isLifted ? 12 : 0, y: isLifted ? 8 : 0)
+        .animation(.easeInOut(duration: 0.15), value: isLifted)
+        .modifier(BodyInteractionModifier(
+            isText: isText,
+            isLifted: $isLifted,
+            dragOffsetX: $dragOffsetX,
+            dragOffsetY: $dragOffsetY,
+            onSelect: {
+                if !isSelected { store.selectedElementID = element.id }
+                store.bringToFront(element.id)
+            },
+            liveDragCommit: { dx, dy in
+                store.setPosition(
+                    element.id,
+                    x: element.x + dx,
+                    y: element.y + dy
+                )
+            }
+        ))
         .overlay(alignment: .topTrailing) {
             if isSelected {
                 deleteButton.offset(x: 10, y: -10)
             }
         }
         .overlay(alignment: .trailing) {
-            if isSelected && !isDrawing {
+            if isSelected {
                 widthHandle.offset(x: 4)
             }
         }
         .overlay(alignment: .bottom) {
-            if isSelected && !isText && !isDrawing {
+            if isSelected && !isText {
                 heightHandle.offset(y: 4)
-            }
-        }
-        .overlay(alignment: .bottomTrailing) {
-            if isSelected && isDrawing {
-                cornerScaleHandle.offset(x: 4, y: 4)
             }
         }
     }
@@ -86,15 +119,30 @@ struct ElementContainerView: View {
                 element: element,
                 placed: placed,
                 width: liveWidth,
-                isActive: isSelected,
-                slices: slices
+                slices: [placed.textSubstring ?? ""],
+                onFocusChange: { focused in
+                    // The text view itself is the source of truth for
+                    // "is this element selected" — when it becomes
+                    // first responder (user tapped into it) the
+                    // element is the active one. When focus leaves,
+                    // the user moved on.
+                    if focused {
+                        if !isSelected { store.selectedElementID = element.id }
+                        store.bringToFront(element.id)
+                    } else if store.selectedElementID == element.id {
+                        // Don't clobber the user's selection if they
+                        // moved focus to another text element in the
+                        // same pass; the new first responder will set
+                        // its own selection. We only clear when focus
+                        // genuinely left (e.g., user tapped the page).
+                        // The page-level tap-to-deselect handles that.
+                    }
+                }
             )
         case .image:
             ImageElementView(store: store, element: element)
         case .audio:
             AudioElementView(store: store, element: element)
-        case .drawing:
-            DrawingElementView(store: store, element: element, isActive: isSelected)
         }
     }
 
@@ -124,20 +172,6 @@ struct ElementContainerView: View {
         .gesture(heightGesture)
     }
 
-    private var cornerScaleHandle: some View {
-        ZStack {
-            Color.clear.frame(width: 44, height: 44) // generous hit target
-            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                .font(.caption.bold())
-                .foregroundStyle(.white)
-                .padding(7)
-                .background(Circle().fill(Color.accentColor))
-                .overlay(Circle().stroke(.white, lineWidth: 1))
-        }
-        .contentShape(Rectangle())
-        .gesture(cornerScaleGesture)
-    }
-
     private var deleteButton: some View {
         Button {
             store.remove(element.id)
@@ -149,7 +183,7 @@ struct ElementContainerView: View {
         }
     }
 
-    // MARK: - Gestures
+    // MARK: - Gestures (resize)
 
     private var widthGesture: some Gesture {
         DragGesture(coordinateSpace: .named("page"))
@@ -172,40 +206,83 @@ struct ElementContainerView: View {
                 heightDelta = 0
             }
     }
+}
 
-    /// Drives width and height together from a single drag (horizontal
-    /// distance sets the scale factor, applied to both dimensions), so
-    /// the block's aspect ratio never changes. Reuses the same
-    /// `widthDelta`/`heightDelta` state the edge handles use — only how
-    /// they're computed differs — so `liveWidth`/`liveHeight` need no
-    /// special-casing for the live preview.
-    private var cornerScaleGesture: some Gesture {
-        DragGesture(coordinateSpace: .named("page"))
+// MARK: - Body interaction modifier
+
+/// Composes the per-kind body gesture stack for Text / Image / Audio.
+///
+/// **No long-press.** Every element is draggable by a normal drag
+/// gesture. A small `minimumDistance: 4` lets a pure tap (no movement)
+/// fall through to the inner UIKit views (the text view, the audio
+/// button) before the drag wins — that's how tapping the text view
+/// focuses it and tapping the audio button plays/pauses without
+/// accidentally moving the block.
+///
+/// - **Text**: only the drag is attached. Taps reach the underlying
+///   `UITextView` directly via UIKit (it becomes first responder on
+///   tap). The text view reports its focus state to the parent so the
+///   selection ring tracks it.
+/// - **Image / Audio**: a body tap selects; a drag moves. The audio
+///   play button is a SwiftUI `Button` deeper in the tree, so taps
+///   routed to its hit area reach the button (play/pause); taps
+///   anywhere else on the block fire the body's select.
+private struct BodyInteractionModifier: ViewModifier {
+    let isText: Bool
+    @Binding var isLifted: Bool
+    @Binding var dragOffsetX: CGFloat
+    @Binding var dragOffsetY: CGFloat
+    let onSelect: () -> Void
+    let liveDragCommit: (_ dx: CGFloat, _ dy: CGFloat) -> Void
+
+    func body(content: Content) -> some View {
+        if isText {
+            // Text: no body tap — the inner `UITextView` handles taps
+            // via UIKit and reports focus back to the parent. Only
+            // the drag is attached, and only as a high-priority
+            // gesture so once motion exceeds `minimumDistance: 4`
+            // the text view's internal selection / cursor panning
+            // gestures yield to element movement.
+            return AnyView(content.highPriorityGesture(moveDragGesture))
+        }
+        // Image / Audio: tap selects; drag moves. The tap uses
+        // `.gesture` (not simultaneous) so the page's tap-to-deselect
+        // doesn't fire on element taps. Inner interactive controls
+        // (the audio play button) still get their own taps because
+        // SwiftUI hit-test routes to deeper views first.
+        return AnyView(
+            content
+                .gesture(selectOnTapGesture)
+                .highPriorityGesture(moveDragGesture)
+        )
+    }
+
+    /// Drag with a small motion threshold. Below 4 points of movement
+    /// the gesture never starts and the touch falls through to the
+    /// inner UIKit view — that's how Text/Image/Audio taps still work
+    /// without the parent intercepting them.
+    private var moveDragGesture: some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .named("page"))
             .onChanged { value in
-                let scale = scaleFactor(for: value.translation.width)
-                widthDelta = frame.width * (scale - 1)
-                heightDelta = frame.height * (scale - 1)
+                if !isLifted { onSelect() }
+                isLifted = true
+                dragOffsetX = value.translation.width
+                dragOffsetY = value.translation.height
             }
             .onEnded { value in
-                let scale = scaleFactor(for: value.translation.width)
-                let targetSize = CGSize(width: frame.width * scale, height: frame.height * scale)
-
-                // setWidth/setHeight clamp to min/max bounds — read back
-                // the ACTUAL applied size before scaling the drawing's
-                // strokes, so its content size tracking never drifts
-                // from what's really stored.
-                let finalWidth = store.setWidth(element.id, to: targetSize.width)
-                let finalHeight = store.setHeight(element.id, to: targetSize.height)
-                store.scaleDrawing(element.id, to: CGSize(width: finalWidth, height: finalHeight))
-
-                widthDelta = 0
-                heightDelta = 0
+                liveDragCommit(value.translation.width, value.translation.height)
+                dragOffsetX = 0
+                dragOffsetY = 0
+                isLifted = false
             }
     }
 
-    private func scaleFactor(for horizontalTranslation: CGFloat) -> CGFloat {
-        guard frame.width > 0 else { return 1 }
-        let minScale = DesignSystem.minBlockWidth / frame.width
-        return max((frame.width + horizontalTranslation) / frame.width, minScale)
+    /// Tap-only gesture for Image / Audio. Attached as `.gesture` so
+    /// the page-level tap-to-deselect doesn't fire on element taps.
+    private var selectOnTapGesture: some Gesture {
+        TapGesture(count: 1)
+            .onEnded {
+                onSelect()
+            }
     }
 }

@@ -1,34 +1,36 @@
 import SwiftUI
+import UIKit
 import PencilKit
 internal import Combine
 
-/// Owns every block and the layout engine that positions them.
+/// Owns every block on every page, plus the per-page drawing layer.
 ///
-/// The big change from the free-placement version: blocks no longer
-/// store an (x, y) position at all. `layout()` computes every block's
-/// on-screen frame on demand — a simple flow layout (like CSS
-/// flex-wrap) over each block's `width`/`height` and its order in
-/// `elements`. Because position is always *derived*, changing a size
-/// automatically reflows everything after it: there's no separate "now
-/// go update the neighbors" step to get wrong, and overlap is
-/// structurally impossible rather than something we check for.
+/// Each journal page contains two things:
+/// - a list of element blocks (`elements`), which are Text / Image /
+///   Audio blocks at stored `(x, y)` page coordinates;
+/// - a drawing layer (`pageDrawings`), which is a `PKDrawing` that
+///   records strokes directly onto the page in the page's coordinate
+///   system.
+///
+/// Strokes are NOT elements: they don't have a frame, can't be
+/// selected, dragged, or resized. They belong to the page the user
+/// drew them on, in that page's natural coordinate space.
 final class CanvasStore: ObservableObject {
     @Published var elements: [CanvasElement] = []
-    @Published var drawings: [UUID: PKDrawing] = [:]
     @Published var selectedElementID: UUID?
+
+    /// Page-level drawing layer: a `PKDrawing` per page index. Strokes
+    /// are stored in the same coordinate system the live
+    /// `PKCanvasView` exposes — i.e., canvas-local points. Because the
+    /// canvas is sized to the page's drawable rect, those points ARE
+    /// the page's drawing coordinates.
+    @Published var pageDrawings: [Int: PKDrawing] = [:]
 
     /// Measured intrinsic height per text block, fed back from
     /// `AutoGrowingTextView` as the user types or its width changes.
     /// This is what makes "no fixed height for text" real: text's row
     /// height in the layout comes from here, not from `element.height`.
     @Published var textHeights: [UUID: CGFloat] = [:]
-
-    /// The frame size each drawing block's `PKDrawing` strokes are
-    /// CURRENTLY expressed in. `PKDrawing` stores strokes in absolute
-    /// coordinates — resizing the view alone does nothing to them, so
-    /// this is what lets `scaleDrawing` compute "how much did this
-    /// block grow/shrink" and transform the strokes to match.
-    @Published var drawingContentSizes: [UUID: CGSize] = [:]
 
     /// Width available for laying out blocks — screen width minus page
     /// padding on both sides. Set once per layout pass by `ContentView`.
@@ -54,6 +56,10 @@ final class CanvasStore: ObservableObject {
         return url
     }
 
+    /// Monotonically-increasing counter used to assign default `zIndex`
+    /// values so newly-added blocks land above existing ones.
+    private var nextZIndex: Int = 0
+
     // MARK: - Layout
 
     func updateContainerWidth(_ width: CGFloat) {
@@ -61,9 +67,27 @@ final class CanvasStore: ObservableObject {
         containerWidth = width
     }
 
-    /// Multi-page layout engine. Given full physical page width and height, computes
-    /// bounded page layouts containing block slices. Text automatically splits across pages
-    /// at line boundaries, and non-text blocks reflow to subsequent pages when space is insufficient.
+    /// Vertical gap between consecutive text slices on stacked pages.
+    /// Only used to keep slices from overlapping each other when a
+    /// single text block overflows the page; not used to position any
+    /// other block.
+    private let textSliceVerticalGap: CGFloat = 24
+
+    /// Multi-page layout engine for **free-positioned** elements.
+    ///
+    /// Position is now stored on each `CanvasElement` (`x`, `y`). The
+    /// layout engine's only remaining responsibilities are:
+    ///
+    /// 1. Decide which slices (one text block may produce several) need
+    ///    more vertical room than a single page offers, and assign each
+    ///    slice the next available page.
+    /// 2. Build a `PlacedElement.frame` whose origin is the canonical
+    ///    element's stored `(x, y)` — NOT something recomputed from
+    ///    array order.
+    ///
+    /// It never moves an element to make room for another. Adding,
+    /// removing, resizing, or moving one block leaves every other
+    /// block's position untouched.
     func layoutPages(pageWidth: CGFloat, pageHeight: CGFloat) -> [PageLayout] {
         let effectiveWidth = max(pageWidth - DesignSystem.pagePadding * 2, 100)
         let effectiveContentHeight = max(pageHeight - DesignSystem.pagePadding * 2 - DesignSystem.pageHeaderHeight, 100)
@@ -72,62 +96,27 @@ final class CanvasStore: ObservableObject {
         var pages: [PageLayout] = []
         var currentPageElements: [PlacedElement] = []
         var pageIndex = 0
-        var cursorX: CGFloat = 0
-        var cursorY: CGFloat = 0
-        var rowHeight: CGFloat = 0
-
-        func finishCurrentPage() {
-            pages.append(PageLayout(id: pageIndex, pageIndex: pageIndex, elements: currentPageElements))
-            pageIndex += 1
-            currentPageElements = []
-            cursorX = 0
-            cursorY = 0
-            rowHeight = 0
-        }
 
         for element in elements {
-            let width = min(max(element.width, DesignSystem.minBlockWidth), effectiveWidth)
+            let width = max(element.width, DesignSystem.minBlockWidth)
 
             if element.kind == .text {
-                if cursorX > 0 {
-                    cursorX = 0
-                    cursorY += rowHeight + DesignSystem.blockSpacing
-                    rowHeight = 0
-                }
-
                 var remainingText = element.text ?? ""
                 var sliceIndex = 0
 
                 if remainingText.isEmpty {
-                    let availableY = effectiveContentHeight - cursorY
-                    if availableY < 40 {
-                        finishCurrentPage()
-                    }
-                    let height = DesignSystem.minBlockHeight
-                    let sliceID = "\(element.id.uuidString)_slice_\(sliceIndex)"
-                    let frame = CGRect(x: 0, y: cursorY, width: width, height: height)
-                    currentPageElements.append(
-                        PlacedElement(
-                            id: sliceID,
-                            canonicalID: element.id,
-                            kind: .text,
-                            frame: frame,
-                            textSubstring: "",
-                            isSplitText: false,
-                            sliceIndex: 0
-                        )
-                    )
-                    cursorY += height + DesignSystem.blockSpacing
-                    cursorX = 0
-                    rowHeight = 0
+                    // Empty text: one slice on the element's own page
+                    // using the stored position.
+                    currentPageElements.append(makeTextSlice(
+                        element: element,
+                        sliceIndex: 0,
+                        text: "",
+                        height: DesignSystem.minBlockHeight,
+                        pageOffset: 0
+                    ))
                 } else {
                     while !remainingText.isEmpty {
-                        var availableY = effectiveContentHeight - cursorY
-                        if availableY < 24 {
-                            finishCurrentPage()
-                            availableY = effectiveContentHeight
-                        }
-
+                        let availableY = effectiveContentHeight
                         let textContentWidth = max(width - DesignSystem.blockContentPadding * 2, 1)
                         let textMaxHeight = max(availableY - DesignSystem.blockContentPadding * 2, 1)
                         let fitLen = TextSplitter.fittingLength(for: remainingText, width: textContentWidth, maxHeight: textMaxHeight)
@@ -135,23 +124,14 @@ final class CanvasStore: ObservableObject {
                         if fitLen >= remainingText.count {
                             let measured = TextSplitter.measureHeight(for: remainingText, width: textContentWidth) + DesignSystem.blockContentPadding * 2
                             let height = max(measured, DesignSystem.minBlockHeight)
-                            let sliceID = "\(element.id.uuidString)_slice_\(sliceIndex)"
-                            let frame = CGRect(x: 0, y: cursorY, width: width, height: height)
-                            let isSplit = (sliceIndex > 0)
-                            currentPageElements.append(
-                                PlacedElement(
-                                    id: sliceID,
-                                    canonicalID: element.id,
-                                    kind: .text,
-                                    frame: frame,
-                                    textSubstring: remainingText,
-                                    isSplitText: isSplit,
-                                    sliceIndex: sliceIndex
-                                )
-                            )
-                            cursorY += height + DesignSystem.blockSpacing
-                            cursorX = 0
-                            rowHeight = 0
+                            currentPageElements.append(makeTextSlice(
+                                element: element,
+                                sliceIndex: sliceIndex,
+                                text: remainingText,
+                                height: height,
+                                pageOffset: 0
+                            ))
+                            sliceIndex += 1
                             remainingText = ""
                         } else if fitLen > 0 {
                             let fittingIndex = remainingText.index(remainingText.startIndex, offsetBy: fitLen)
@@ -160,47 +140,40 @@ final class CanvasStore: ObservableObject {
 
                             let measured = TextSplitter.measureHeight(for: fittingText, width: textContentWidth) + DesignSystem.blockContentPadding * 2
                             let height = max(measured, DesignSystem.minBlockHeight)
-                            let sliceID = "\(element.id.uuidString)_slice_\(sliceIndex)"
-                            let frame = CGRect(x: 0, y: cursorY, width: width, height: height)
-                            currentPageElements.append(
-                                PlacedElement(
-                                    id: sliceID,
-                                    canonicalID: element.id,
-                                    kind: .text,
-                                    frame: frame,
-                                    textSubstring: fittingText,
-                                    isSplitText: true,
-                                    sliceIndex: sliceIndex
-                                )
-                            )
+                            currentPageElements.append(makeTextSlice(
+                                element: element,
+                                sliceIndex: sliceIndex,
+                                text: fittingText,
+                                height: height,
+                                pageOffset: 0
+                            ))
                             sliceIndex += 1
-                            finishCurrentPage()
                         } else {
-                            finishCurrentPage()
+                            break
+                        }
+
+                        if !remainingText.isEmpty {
+                            // Overflow: roll to a new page, keep the
+                            // element's stored (x, y) — the layout
+                            // engine never INVENTS a position, it only
+                            // chooses which page this slice belongs to.
+                            pages.append(PageLayout(id: pageIndex, pageIndex: pageIndex, elements: currentPageElements))
+                            pageIndex += 1
+                            currentPageElements = []
                         }
                     }
                 }
             } else {
-                var height = max(element.height, DesignSystem.minBlockHeight)
-                if height > effectiveContentHeight {
-                    height = effectiveContentHeight
-                }
-
-                if cursorX > 0 && cursorX + width > effectiveWidth + 0.5 {
-                    cursorX = 0
-                    cursorY += rowHeight + DesignSystem.blockSpacing
-                    rowHeight = 0
-                }
-
-                if cursorY + height > effectiveContentHeight && cursorY > 0 {
-                    finishCurrentPage()
-                }
-
-                let sliceID = "\(element.id.uuidString)_slice_0"
-                let frame = CGRect(x: cursorX, y: cursorY, width: width, height: height)
+                // Non-text blocks (image, audio): one slice, placed at
+                // the canonical element's stored (x, y). The page it
+                // belongs to is always the current one — the caller
+                // (PageView / BookPageCurlView) decides whether the
+                // slice is visible given the displayed page.
+                let height = max(element.height, DesignSystem.minBlockHeight)
+                let frame = CGRect(x: element.x, y: element.y, width: width, height: height)
                 currentPageElements.append(
                     PlacedElement(
-                        id: sliceID,
+                        id: "\(element.id.uuidString)_slice_0",
                         canonicalID: element.id,
                         kind: element.kind,
                         frame: frame,
@@ -209,8 +182,6 @@ final class CanvasStore: ObservableObject {
                         sliceIndex: 0
                     )
                 )
-                cursorX += width + DesignSystem.blockSpacing
-                rowHeight = max(rowHeight, height)
             }
         }
 
@@ -219,6 +190,31 @@ final class CanvasStore: ObservableObject {
         }
 
         return pages
+    }
+
+    /// Builds a `PlacedElement` for a text slice whose origin is the
+    /// canonical element's stored `(x, y)`. `pageOffset` is non-zero
+    /// when the slice has spilled onto a later page so the visual
+    /// offset still keeps the slice directly below its predecessor.
+    private func makeTextSlice(
+        element: CanvasElement,
+        sliceIndex: Int,
+        text: String,
+        height: CGFloat,
+        pageOffset: CGFloat
+    ) -> PlacedElement {
+        let width = max(element.width, DesignSystem.minBlockWidth)
+        let yOffset = element.y + CGFloat(sliceIndex) * textSliceVerticalGap
+        let frame = CGRect(x: element.x, y: yOffset + pageOffset, width: width, height: height)
+        return PlacedElement(
+            id: "\(element.id.uuidString)_slice_\(sliceIndex)",
+            canonicalID: element.id,
+            kind: .text,
+            frame: frame,
+            textSubstring: text,
+            isSplitText: sliceIndex > 0,
+            sliceIndex: sliceIndex
+        )
     }
 
     /// Computes spreads for either single-page mode (iPhone) or two-page book spread mode (iPad).
@@ -253,11 +249,45 @@ final class CanvasStore: ObservableObject {
         textHeights[id] = rounded
     }
 
-    // MARK: - Adding blocks — default width matches container width
+    // MARK: - Adding blocks — each new block gets a per-kind intrinsic
+    // default size, NOT the full canvas width. The user has to
+    // explicitly resize a block to make it wider. Existing resized
+    // sizes are preserved: `setWidth` / `setHeight` only enforce a
+    // floor, and that path is independent of this default-size path.
+
+    /// Per-kind default sizes for new blocks when there's no intrinsic
+    /// source dimension to read from. Picked so each block starts at a
+    /// reasonable intrinsic dimension rather than the full canvas width:
+    /// - **Text**: a comfortable single-line width.
+    /// - **Image**: 320×213 (3:2) placeholder, used only as the fallback
+    ///   if `UIImage(data:)` can't decode the source bytes. The actual
+    ///   `addImage(data:)` path preserves the source aspect ratio.
+    /// - **Audio**: a horizontal audio player bar.
+    private func defaultSize(for kind: ElementKind) -> CGSize {
+        switch kind {
+        case .text:
+            return CGSize(width: 280, height: DesignSystem.minBlockHeight)
+        case .image:
+            return CGSize(width: 320, height: 213)
+        case .audio:
+            return CGSize(width: 320, height: 120)
+        }
+    }
 
     @discardableResult
     func addText() -> CanvasElement {
-        let element = CanvasElement(kind: .text, width: containerWidth, height: DesignSystem.minBlockHeight, text: "")
+        let next = nextPlacementForNewBlock()
+        let size = defaultSize(for: .text)
+        let element = CanvasElement(
+            kind: .text,
+            x: next.x,
+            y: next.y,
+            zIndex: nextZIndex,
+            width: size.width,
+            height: size.height,
+            text: ""
+        )
+        consumeNextZIndex()
         elements.append(element)
         selectedElementID = element.id
         focusLastPage()
@@ -274,7 +304,26 @@ final class CanvasStore: ObservableObject {
             print("Failed to save image: \(error)")
             return nil
         }
-        let element = CanvasElement(kind: .image, width: containerWidth, height: 260, imageFileName: fileName)
+        let next = nextPlacementForNewBlock()
+        // Read the source image's pixel size so the new block can
+        // preserve its aspect ratio. If reading fails, fall back to
+        // the generic placeholder.
+        let intrinsic = UIImage(data: data)?.size ?? defaultSize(for: .image)
+        let maxWidth: CGFloat = 320
+        let aspect = intrinsic.height > 0 ? intrinsic.height / intrinsic.width : 0.66
+        let width = min(intrinsic.width, maxWidth)
+        let height = max(width * aspect, 80)
+
+        let element = CanvasElement(
+            kind: .image,
+            x: next.x,
+            y: next.y,
+            zIndex: nextZIndex,
+            width: width,
+            height: height,
+            imageFileName: fileName
+        )
+        consumeNextZIndex()
         elements.append(element)
         selectedElementID = element.id
         focusLastPage()
@@ -294,26 +343,39 @@ final class CanvasStore: ObservableObject {
             print("Failed to save audio: \(error)")
             return nil
         }
+        let next = nextPlacementForNewBlock()
+        let size = defaultSize(for: .audio)
         let element = CanvasElement(
-            kind: .audio, width: containerWidth, height: 120,
-            audioFileName: fileName, audioDuration: duration
+            kind: .audio,
+            x: next.x,
+            y: next.y,
+            zIndex: nextZIndex,
+            width: size.width,
+            height: size.height,
+            audioFileName: fileName,
+            audioDuration: duration
         )
+        consumeNextZIndex()
         elements.append(element)
         selectedElementID = element.id
         focusLastPage()
         return element
     }
 
-    @discardableResult
-    func addDrawing() -> CanvasElement {
-        let size = CGSize(width: containerWidth, height: 260)
-        let element = CanvasElement(kind: .drawing, width: size.width, height: size.height)
-        elements.append(element)
-        drawings[element.id] = PKDrawing()
-        drawingContentSizes[element.id] = size
-        selectedElementID = element.id
-        focusLastPage()
-        return element
+    /// Picks an initial (x, y) for a newly-added block: stacks below
+    /// existing blocks with a small diagonal offset so multiple new
+    /// blocks don't all land at exactly (0, 0) and obscure each other.
+    private func nextPlacementForNewBlock() -> CGPoint {
+        let inset: CGFloat = DesignSystem.pagePadding
+        let cascade: CGFloat = 32
+        if let last = elements.last {
+            return CGPoint(x: last.x + cascade, y: last.y + cascade)
+        }
+        return CGPoint(x: inset, y: inset)
+    }
+
+    private func consumeNextZIndex() {
+        nextZIndex += 1
     }
 
     private func focusLastPage() {
@@ -323,15 +385,41 @@ final class CanvasStore: ObservableObject {
         }
     }
 
-    // MARK: - Resizing — the only way a block's size ever changes
+    // MARK: - Page-level drawing layer
 
-    /// Returns the width actually applied (post-clamp) — callers that
-    /// need to know the real final size, like `scaleDrawing`, use this
-    /// instead of assuming their requested value stuck.
+    /// Returns the drawing stored for `pageIndex`, or an empty drawing
+    /// if the page has no strokes yet. Strokes recorded in this drawing
+    /// are in the page's coordinate system — i.e., the same coordinate
+    /// space the live `PKCanvasView` in `PageDrawingView` exposes.
+    func drawing(forPage pageIndex: Int) -> PKDrawing {
+        pageDrawings[pageIndex] ?? PKDrawing()
+    }
+
+    /// Writes the latest drawing for `pageIndex`. Called by the live
+    /// canvas's `canvasViewDrawingDidChange` delegate.
+    func setDrawing(_ drawing: PKDrawing, forPage pageIndex: Int) {
+        // Skip the publish when nothing actually changed — PencilKit
+        // fires its delegate on every stroke tweak, including trivial
+        // mid-stroke updates, and a redundant publish forces a full
+        // page re-render.
+        if pageDrawings[pageIndex] == drawing { return }
+        pageDrawings[pageIndex] = drawing
+    }
+
+    /// Clears the strokes on a single page.
+    func clearDrawing(forPage pageIndex: Int) {
+        pageDrawings[pageIndex] = nil
+    }
+
+    // MARK: - Resizing — free-form canvas: only the floor clamps
+    // remain, not the page / container ceiling.
+
+    /// Returns the width actually applied (post-clamp) — callers can
+    /// read it back if they need to know what the post-clamp width was.
     @discardableResult
     func setWidth(_ id: UUID, to width: CGFloat) -> CGFloat {
         guard let idx = elements.firstIndex(where: { $0.id == id }) else { return width }
-        let clamped = min(max(width, DesignSystem.minBlockWidth), containerWidth)
+        let clamped = max(width, DesignSystem.minBlockWidth)
         elements[idx].width = clamped
         return clamped
     }
@@ -345,25 +433,22 @@ final class CanvasStore: ObservableObject {
         return clamped
     }
 
-    /// Scales a drawing block's stored strokes to fill a new size,
-    /// keeping the drawing itself in lockstep with its frame instead of
-    /// staying pinned at whatever size it was originally drawn at.
-    /// Called once, after both dimensions of a resize are committed,
-    /// with the block's real final (post-clamp) size.
-    func scaleDrawing(_ id: UUID, to newSize: CGSize) {
-        defer { drawingContentSizes[id] = newSize }
+    /// Writes back a new top-left position for a block. No clamps:
+    /// elements are allowed to leave the visible page region (the
+    /// caller can pan / scroll, or simply move on). This is the only
+    /// mutator the drag gesture calls.
+    func setPosition(_ id: UUID, x: CGFloat, y: CGFloat) {
+        guard let idx = elements.firstIndex(where: { $0.id == id }) else { return }
+        elements[idx].x = x
+        elements[idx].y = y
+    }
 
-        guard let oldSize = drawingContentSizes[id],
-              oldSize.width > 0, oldSize.height > 0,
-              let current = drawings[id], !current.strokes.isEmpty else {
-            return
-        }
-        let scaleX = newSize.width / oldSize.width
-        let scaleY = newSize.height / oldSize.height
-        guard scaleX.isFinite, scaleY.isFinite, scaleX > 0, scaleY > 0 else { return }
-
-        let transform = CGAffineTransform(scaleX: scaleX, y: scaleY)
-        drawings[id] = current.transformed(using: transform)
+    /// Promotes a block to the top of the current z-order so further
+    /// interactions on overlapping stacks target it.
+    func bringToFront(_ id: UUID) {
+        guard let idx = elements.firstIndex(where: { $0.id == id }) else { return }
+        consumeNextZIndex()
+        elements[idx].zIndex = nextZIndex
     }
 
     func update(_ element: CanvasElement) {
@@ -373,9 +458,7 @@ final class CanvasStore: ObservableObject {
 
     func remove(_ id: UUID) {
         elements.removeAll { $0.id == id }
-        drawings[id] = nil
         textHeights[id] = nil
-        drawingContentSizes[id] = nil
         if selectedElementID == id { selectedElementID = nil }
     }
 }
