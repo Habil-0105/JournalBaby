@@ -37,17 +37,27 @@ final class CanvasStore: ObservableObject {
     /// Size of the canvas content area (from the host GeometryReader).
     /// Used to clamp drags and default placement inside the board.
     @Published private(set) var canvasSize: CGSize = .zero
+    
+    @Published var zoomScale: CGFloat = 1.0
+    @Published var zoomOffset: CGSize = .zero
+
+    static let minZoomScale: CGFloat = 0.5
+    static let maxZoomScale: CGFloat = 4.0
+
+    static func clampZoom(_ value: CGFloat) -> CGFloat {
+        min(max(value, minZoomScale), maxZoomScale)
+    }
+
+    func resetZoom() {
+        zoomScale = 1.0
+        zoomOffset = .zero
+    }
 
     func updateCanvasSize(_ size: CGSize) {
         guard size.width > 0, size.height > 0, size != canvasSize else { return }
         canvasSize = size
     }
 
-    // MARK: - Selection, text focus, draw mode
-
-    /// Selects an element (or clears the selection with `nil`). Selecting
-    /// any element automatically exits Draw mode and drops text focus, so
-    /// the normal select → edit / drag / resize flow always wins.
     func select(_ id: UUID?) {
         if id != nil {
             drawMode = false
