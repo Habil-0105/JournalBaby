@@ -3,21 +3,46 @@ import Combine
 import UIKit
 import PencilKit
 
-/// Owns every element and all the canvas state. There is no layout engine
-/// here anymore — the old `layoutPages` flow layout is gone. Each element
-/// carries its own `position`, and this store is just the single source of
-/// truth that views read from and mutate:
+/// Owns every page and the per-page canvas state. There is no layout
+/// engine here — each element on a page carries its own `position`, and
+/// this store is just the single source of truth that views read from
+/// and mutate:
 ///
 /// ```
-/// store.elements[i].position  ──►  canvas rendering
-/// store.elements[i].position  ──►  hit testing / taps
-/// drag gesture                ──►  store.moveElement  ──►  position
+/// store.currentPage.elements[i].position  ──►  canvas rendering
+/// store.currentPage.elements[i].position  ──►  hit testing / taps
+/// drag gesture                            ──►  store.moveElement  ──►  position
 /// ```
 ///
-/// Because position is stored (not derived), moving, adding, or deleting an
-/// element never affects another element's position.
+/// `elements` and `scribble` are scoped to the current page so flipping
+/// to a different page swaps the whole visible state. UI-only state
+/// (selection, text focus, draw mode, zoom) stays global because those
+/// follow the user, not the page.
 final class CanvasStore: ObservableObject {
-    @Published var elements: [CanvasElement] = []
+    @Published var pages: [Page] = [Page()]
+    @Published var currentPageIndex: Int = 0
+
+    /// The page currently shown. All element + scribble mutations read
+    /// and write through here. Computed (not stored) so the store has
+    /// exactly one place to update.
+    var currentPage: Page {
+        pages[currentPageIndex]
+    }
+
+    /// Convenience accessors. Views should keep reading these instead of
+    /// reaching into `pages[currentPageIndex]` directly — that keeps the
+    /// "current page" concept owned by the store.
+    var elements: [CanvasElement] {
+        currentPage.elements
+    }
+    var scribble: PKDrawing {
+        get { currentPage.scribble }
+        set {
+            guard pages.indices.contains(currentPageIndex) else { return }
+            pages[currentPageIndex].scribble = newValue
+        }
+    }
+
     @Published var selectedElementID: UUID?
 
     /// The text block currently being edited (first responder). Kept
@@ -30,14 +55,10 @@ final class CanvasStore: ObservableObject {
     /// element turns it off.
     @Published var drawMode: Bool = false
 
-    /// Freehand strokes drawn directly on the board — a drawing layer under
-    /// (and independent of) the elements, keyed to no element.
-    @Published var scribble: PKDrawing = PKDrawing()
-
     /// Size of the canvas content area (from the host GeometryReader).
     /// Used to clamp drags and default placement inside the board.
     @Published private(set) var canvasSize: CGSize = .zero
-    
+
     @Published var zoomScale: CGFloat = 1.0
     @Published var zoomOffset: CGSize = .zero
 
@@ -90,6 +111,49 @@ final class CanvasStore: ObservableObject {
         }
     }
 
+    // MARK: - Pages
+
+    /// Appends a fresh empty page and switches to it.
+    @discardableResult
+    func addPage() -> Page {
+        let page = Page()
+        pages.append(page)
+        switchToPage(at: pages.count - 1)
+        return page
+    }
+
+    /// Switches to the page at `index`. UI‑only selection/focus/draw mode
+    /// is cleared because it can't apply across pages.
+    func switchToPage(at index: Int) {
+        guard pages.indices.contains(index) else { return }
+        currentPageIndex = index
+        selectedElementID = nil
+        focusedTextID = nil
+        drawMode = false
+    }
+
+    /// Removes the page at `index`. If it was the current page, falls
+    /// back to the neighbour (preferring the previous page); if it was
+    /// the only page, an empty page replaces it so the board always has
+    /// at least one page to draw on.
+    func removePage(at index: Int) {
+        guard pages.indices.contains(index) else { return }
+        pages.remove(at: index)
+        if pages.isEmpty {
+            pages = [Page()]
+            currentPageIndex = 0
+            return
+        }
+        if currentPageIndex >= pages.count {
+            currentPageIndex = pages.count - 1
+        } else if index < currentPageIndex {
+            currentPageIndex -= 1
+        }
+        selectedElementID = nil
+        focusedTextID = nil
+        drawMode = false
+    }
+
     // MARK: - On-disk storage for images / audio
 
     private var documentsURL: URL {
@@ -115,10 +179,12 @@ final class CanvasStore: ObservableObject {
     /// model, the rendering, and hit testing all stay in lockstep — there
     /// is no temporary visual offset that later has to be committed.
     func moveElement(_ id: UUID, to topLeft: CGPoint) {
-        guard let idx = elements.firstIndex(where: { $0.id == id }) else { return }
-        let maxX = max(canvasSize.width - elements[idx].width, 0)
-        let maxY = max(canvasSize.height - elements[idx].height, 0)
-        elements[idx].position = CGPoint(
+        guard let pageIdx = pages.indices.first,
+              let idx = pages[pageIdx].elements.firstIndex(where: { $0.id == id }) else { return }
+        let element = pages[pageIdx].elements[idx]
+        let maxX = max(canvasSize.width - element.width, 0)
+        let maxY = max(canvasSize.height - element.height, 0)
+        pages[pageIdx].elements[idx].position = CGPoint(
             x: min(max(topLeft.x, 0), maxX),
             y: min(max(topLeft.y, 0), maxY)
         )
@@ -152,7 +218,7 @@ final class CanvasStore: ObservableObject {
             height: DesignSystem.minBlockHeight,
             text: ""
         )
-        elements.append(element)
+        pages[currentPageIndex].elements.append(element)
         select(element.id)
         return element
     }
@@ -181,7 +247,7 @@ final class CanvasStore: ObservableObject {
             height: height,
             imageFileName: fileName
         )
-        elements.append(element)
+        pages[currentPageIndex].elements.append(element)
         select(element.id)
         return element
     }
@@ -207,7 +273,7 @@ final class CanvasStore: ObservableObject {
             audioFileName: fileName,
             audioDuration: duration
         )
-        elements.append(element)
+        pages[currentPageIndex].elements.append(element)
         select(element.id)
         return element
     }
@@ -220,18 +286,19 @@ final class CanvasStore: ObservableObject {
 
     @discardableResult
     func setWidth(_ id: UUID, to width: CGFloat) -> CGFloat {
-        guard let idx = elements.firstIndex(where: { $0.id == id }) else { return width }
+        guard let idx = pageAndElementIndex(for: id) else { return width }
         let clamped = min(max(width, DesignSystem.minBlockWidth), canvasWidth)
-        elements[idx].width = clamped
+        pages[idx.page].elements[idx.element].width = clamped
         return clamped
     }
 
     /// No-op for `.text` — its height is never user-set, only measured.
     @discardableResult
     func setHeight(_ id: UUID, to height: CGFloat) -> CGFloat {
-        guard let idx = elements.firstIndex(where: { $0.id == id }), elements[idx].kind != .text else { return height }
+        guard let idx = pageAndElementIndex(for: id),
+              pages[idx.page].elements[idx.element].kind != .text else { return height }
         let clamped = max(height, DesignSystem.minBlockHeight)
-        elements[idx].height = clamped
+        pages[idx.page].elements[idx.element].height = clamped
         return clamped
     }
 
@@ -239,23 +306,40 @@ final class CanvasStore: ObservableObject {
     /// into the element's stored height, so its frame always matches its
     /// content without any flow engine.
     func setTextHeight(_ id: UUID, height: CGFloat) {
-        guard let idx = elements.firstIndex(where: { $0.id == id }), elements[idx].kind == .text else { return }
+        guard let idx = pageAndElementIndex(for: id),
+              pages[idx.page].elements[idx.element].kind == .text else { return }
         let newHeight = max(height.rounded(), DesignSystem.minBlockHeight)
-        if elements[idx].height != newHeight {
-            elements[idx].height = newHeight
+        if pages[idx.page].elements[idx.element].height != newHeight {
+            pages[idx.page].elements[idx.element].height = newHeight
         }
     }
 
     func updateElementText(_ id: UUID, text: String) {
-        guard let idx = elements.firstIndex(where: { $0.id == id }) else { return }
-        elements[idx].text = text
+        guard let idx = pageAndElementIndex(for: id) else { return }
+        pages[idx.page].elements[idx.element].text = text
     }
 
     // MARK: - Removal
 
     func remove(_ id: UUID) {
-        elements.removeAll { $0.id == id }
+        guard let idx = pageAndElementIndex(for: id) else { return }
+        pages[idx.page].elements.remove(at: idx.element)
         if selectedElementID == id { selectedElementID = nil }
         if focusedTextID == id { focusedTextID = nil }
+    }
+
+    // MARK: - Helpers
+
+    /// Locates an element across all pages. Returns `(pageIndex, elementIndex)`
+    /// so callers can mutate the right element on the right page. Scoped to
+    /// `currentPageIndex` today (selection only ever points at the visible
+    /// page) but kept cross-page-safe for future "select from another page"
+    /// flows.
+    private func pageAndElementIndex(for id: UUID) -> (page: Int, element: Int)? {
+        guard pages.indices.contains(currentPageIndex) else { return nil }
+        if let element = pages[currentPageIndex].elements.firstIndex(where: { $0.id == id }) {
+            return (currentPageIndex, element)
+        }
+        return nil
     }
 }

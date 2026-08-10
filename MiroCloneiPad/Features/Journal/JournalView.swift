@@ -10,9 +10,12 @@ struct JournalView: View {
 
     var body: some View {
         NavigationStack {
-            GeometryReader { geo in
-                FreeformCanvasView(store: store, size: geo.size)
-                    .background(Color(.systemGroupedBackground))
+            VStack(spacing: 0) {
+                GeometryReader { geo in
+                    FreeformCanvasView(store: store, size: geo.size)
+                        .background(Color(.systemGroupedBackground))
+                }
+                PageStripView(store: store)
             }
             .navigationTitle("Journal")
             .navigationBarTitleDisplayMode(.inline)
