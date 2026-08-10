@@ -1,6 +1,6 @@
 import SwiftUI
+import Combine
 import AVFoundation
-internal import Combine
 
 /// Handles microphone permission + recording to a temp file.
 final class AudioRecorderManager: NSObject, ObservableObject {

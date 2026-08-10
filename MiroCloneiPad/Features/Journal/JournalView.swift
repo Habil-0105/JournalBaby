@@ -1,7 +1,9 @@
 import SwiftUI
 import PhotosUI
 
-struct ContentView: View {
+/// Root screen of the Journal feature: hosts the freeform canvas and the
+/// toolbar that adds text / image / audio blocks or toggles Scribble mode.
+struct JournalView: View {
     @StateObject private var store = CanvasStore()
     @State private var photosPickerItem: PhotosPickerItem?
     @State private var showAudioSheet = false
@@ -58,5 +60,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    JournalView()
 }

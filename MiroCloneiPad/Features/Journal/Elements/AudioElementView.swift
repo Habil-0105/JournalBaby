@@ -1,6 +1,6 @@
 import SwiftUI
+import Combine
 import AVFoundation
-internal import Combine
 
 struct AudioElementView: View {
     @ObservedObject var store: CanvasStore

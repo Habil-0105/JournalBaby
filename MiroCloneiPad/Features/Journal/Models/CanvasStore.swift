@@ -1,7 +1,7 @@
 import SwiftUI
+import Combine
 import UIKit
 import PencilKit
-internal import Combine
 
 /// Owns every element and all the canvas state. There is no layout engine
 /// here anymore — the old `layoutPages` flow layout is gone. Each element

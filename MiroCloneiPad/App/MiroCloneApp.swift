@@ -4,7 +4,7 @@ import SwiftUI
 struct MiroCloneApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            JournalView()
         }
     }
 }

@@ -1,5 +1,4 @@
 import SwiftUI
-import PencilKit
 
 /// The single freeform canvas. There is no paging, no flow layout, and no
 /// derived positioning: each element is rendered at its own
@@ -33,13 +32,7 @@ struct FreeformCanvasView: View {
             RoundedRectangle(cornerRadius: DesignSystem.cornerRadius)
                 .fill(Color(.systemBackground))
 
-            ScribbleCanvasView(
-                drawing: Binding(
-                    get: { store.scribble },
-                    set: { store.scribble = $0 }
-                ),
-                isActive: false
-            )
+            ScribbleCanvasView(drawing: store.scribble)
 
             ForEach(store.elements) { element in
                 ElementContainerView(store: store, element: element)
