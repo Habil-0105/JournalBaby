@@ -2,9 +2,9 @@ import SwiftUI
 import PencilKit
 
 /// A PencilKit canvas that fills whatever frame it's given and clips its
-/// contents. Used by `DrawingElementView`, sized to that block's frame —
-/// because the view itself never extends beyond its parent's bounds, it's
-/// physically impossible to scribble outside the block.
+/// contents. Used as the board's scribble layer in `FreeformCanvasView`,
+/// where it renders the committed strokes (`isActive: false`, display
+/// only) sized to the board.
 struct ScribbleCanvasView: UIViewRepresentable {
     @Binding var drawing: PKDrawing
     var isActive: Bool

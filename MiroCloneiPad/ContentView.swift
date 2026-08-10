@@ -2,7 +2,6 @@ import SwiftUI
 import PhotosUI
 
 struct ContentView: View {
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var store = CanvasStore()
     @State private var photosPickerItem: PhotosPickerItem?
     @State private var showAudioSheet = false
@@ -10,27 +9,8 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             GeometryReader { geo in
-                let singlePageWidth = geo.size.width
-                let pages = store.layoutPages(pageWidth: singlePageWidth, pageHeight: geo.size.height)
-                let spreads = store.layoutSpreads(pageWidth: geo.size.width, pageHeight: geo.size.height)
-                let totalPages = max(pages.count, 1)
-
-                BookPageCurlView(
-                    store: store,
-                    spreads: spreads,
-                    pageWidth: geo.size.width,
-                    pageHeight: geo.size.height,
-                    totalPages: totalPages
-                )
-                .background(Color(.systemGroupedBackground))
-                .onChange(of: pages.count) { _, newCount in
-                    if store.currentPageIndex >= newCount {
-                        store.currentPageIndex = max(newCount - 1, 0)
-                        print("111")
-                    } else {
-                        print("222")
-                    }
-                }
+                FreeformCanvasView(store: store, size: geo.size)
+                    .background(Color(.systemGroupedBackground))
             }
             .navigationTitle("Journal")
             .navigationBarTitleDisplayMode(.inline)
@@ -53,9 +33,12 @@ struct ContentView: View {
                     }
 
                     Button {
-                        store.addDrawing()
+                        store.toggleDrawMode()
                     } label: {
-                        Label("Add Drawing", systemImage: "scribble")
+                        Label(
+                            store.drawMode ? "Scribble On" : "Scribble",
+                            systemImage: store.drawMode ? "pencil.tip" : "scribble"
+                        )
                     }
                 }
             }

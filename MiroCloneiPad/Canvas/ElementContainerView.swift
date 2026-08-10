@@ -1,44 +1,52 @@
 import SwiftUI
 
-/// Wraps a block at the frame `PageView` computed for it via
-/// `CanvasStore.layout()`. There's no move handle anymore — position is
-/// always derived from order + size, never chosen by dragging. What's
-/// left:
+/// An element on the freeform canvas. It renders at `element.position`
+/// (the parent applies that offset), and its own frame is `element.width ×
+/// element.height`.
 ///
-/// - tap-to-select (shows the handles below and, for text/drawing,
-///   switches that block into its interactive editing state)
-/// - a **width handle** (right edge, all kinds) — drag to resize width;
-///   this is what triggers reflow of every block after it.
-/// - a **height handle** (bottom edge, all kinds except text) — text has
-///   no height handle because its height is automatic.
+/// Interactions:
+/// - **tap** selects the block (shows handles); **double-tap** (text) starts
+///   editing.
+/// - **drag anywhere** moves the block — the gesture writes straight to
+///   `store.moveElement`, i.e. to `element.position`, so the visual
+///   position, the model position, and the hit-test position are always the
+///   same value. Text is draggable whenever it isn't actively being edited,
+///   so grabbing a text block never fights its caret.
+/// - a **width handle** (right edge, all kinds) — drag to resize width.
+/// - a **height handle** (bottom edge, image/audio) — text height is
+///   automatic (measured content height).
 /// - a delete button (top-right).
 struct ElementContainerView: View {
     @ObservedObject var store: CanvasStore
-    var placed: PlacedElement
     var element: CanvasElement
-    var slices: [String]
 
     @State private var widthDelta: CGFloat = 0
     @State private var heightDelta: CGFloat = 0
+    /// The canvas position captured when the current move-drag started, so
+    /// the live position is always `start + translation`.
+    @State private var dragStartPosition: CGPoint?
 
-    private var frame: CGRect {
-        placed.frame
-    }
     private var isSelected: Bool {
         store.selectedElementID == element.id
     }
     private var isText: Bool {
         element.kind == .text
     }
-    private var isDrawing: Bool {
-        element.kind == .drawing
+    private var isFocused: Bool {
+        store.focusedTextID == element.id
     }
 
     private var liveWidth: CGFloat {
-        min(max(frame.width + widthDelta, DesignSystem.minBlockWidth), store.containerWidth)
+        min(max(element.width + widthDelta, DesignSystem.minBlockWidth), max(store.canvasSize.width, DesignSystem.minBlockWidth))
     }
     private var liveHeight: CGFloat {
-        isText ? frame.height : max(frame.height + heightDelta, DesignSystem.minBlockHeight)
+        isText ? element.height : max(element.height + heightDelta, DesignSystem.minBlockHeight)
+    }
+
+    /// All kinds are always draggable except a text block that is actively
+    /// being edited — while editing, caret/selection gestures must win.
+    private var moveEnabled: Bool {
+        !isText || !isFocused
     }
 
     var body: some View {
@@ -53,26 +61,27 @@ struct ElementContainerView: View {
         .frame(width: liveWidth, height: liveHeight)
         .contentShape(RoundedRectangle(cornerRadius: DesignSystem.cornerRadius))
         .onTapGesture {
-            store.selectedElementID = element.id
+            store.select(element.id)
         }
+        .onTapGesture(count: 2) {
+            if isText {
+                store.focusText(element.id)
+            }
+        }
+        .gesture(moveGesture, including: moveEnabled ? .gesture : .none)
         .overlay(alignment: .topTrailing) {
             if isSelected {
                 deleteButton.offset(x: 10, y: -10)
             }
         }
         .overlay(alignment: .trailing) {
-            if isSelected && !isDrawing {
+            if isSelected {
                 widthHandle.offset(x: 4)
             }
         }
         .overlay(alignment: .bottom) {
-            if isSelected && !isText && !isDrawing {
+            if isSelected && !isText {
                 heightHandle.offset(y: 4)
-            }
-        }
-        .overlay(alignment: .bottomTrailing) {
-            if isSelected && isDrawing {
-                cornerScaleHandle.offset(x: 4, y: 4)
             }
         }
     }
@@ -84,17 +93,13 @@ struct ElementContainerView: View {
             TextElementView(
                 store: store,
                 element: element,
-                placed: placed,
                 width: liveWidth,
-                isActive: isSelected,
-                slices: slices
+                isFocused: isFocused
             )
         case .image:
             ImageElementView(store: store, element: element)
         case .audio:
             AudioElementView(store: store, element: element)
-        case .drawing:
-            DrawingElementView(store: store, element: element, isActive: isSelected)
         }
     }
 
@@ -124,20 +129,6 @@ struct ElementContainerView: View {
         .gesture(heightGesture)
     }
 
-    private var cornerScaleHandle: some View {
-        ZStack {
-            Color.clear.frame(width: 44, height: 44) // generous hit target
-            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                .font(.caption.bold())
-                .foregroundStyle(.white)
-                .padding(7)
-                .background(Circle().fill(Color.accentColor))
-                .overlay(Circle().stroke(.white, lineWidth: 1))
-        }
-        .contentShape(Rectangle())
-        .gesture(cornerScaleGesture)
-    }
-
     private var deleteButton: some View {
         Button {
             store.remove(element.id)
@@ -151,61 +142,50 @@ struct ElementContainerView: View {
 
     // MARK: - Gestures
 
+    /// Moves the block by writing to its real `position` on every drag
+    /// change (clamped to the board), so the model is always the truth —
+    /// nothing to re-commit on `onEnded`, nothing visual to reconcile.
+    private var moveGesture: some Gesture {
+        DragGesture(coordinateSpace: .named("canvas"))
+            .onChanged { value in
+                if dragStartPosition == nil {
+                    dragStartPosition = element.position
+                    if !isText {
+                        store.select(element.id)
+                    }
+                }
+                store.moveElement(
+                    element.id,
+                    to: CGPoint(
+                        x: (dragStartPosition?.x ?? element.position.x) + value.translation.width,
+                        y: (dragStartPosition?.y ?? element.position.y) + value.translation.height
+                    )
+                )
+            }
+            .onEnded { _ in
+                dragStartPosition = nil
+            }
+    }
+
     private var widthGesture: some Gesture {
-        DragGesture(coordinateSpace: .named("page"))
+        DragGesture(coordinateSpace: .named("canvas"))
             .onChanged { value in
                 widthDelta = value.translation.width
             }
             .onEnded { value in
-                store.setWidth(element.id, to: frame.width + value.translation.width)
+                store.setWidth(element.id, to: element.width + value.translation.width)
                 widthDelta = 0
             }
     }
 
     private var heightGesture: some Gesture {
-        DragGesture(coordinateSpace: .named("page"))
+        DragGesture(coordinateSpace: .named("canvas"))
             .onChanged { value in
                 heightDelta = value.translation.height
             }
             .onEnded { value in
-                store.setHeight(element.id, to: frame.height + value.translation.height)
+                store.setHeight(element.id, to: element.height + value.translation.height)
                 heightDelta = 0
             }
-    }
-
-    /// Drives width and height together from a single drag (horizontal
-    /// distance sets the scale factor, applied to both dimensions), so
-    /// the block's aspect ratio never changes. Reuses the same
-    /// `widthDelta`/`heightDelta` state the edge handles use — only how
-    /// they're computed differs — so `liveWidth`/`liveHeight` need no
-    /// special-casing for the live preview.
-    private var cornerScaleGesture: some Gesture {
-        DragGesture(coordinateSpace: .named("page"))
-            .onChanged { value in
-                let scale = scaleFactor(for: value.translation.width)
-                widthDelta = frame.width * (scale - 1)
-                heightDelta = frame.height * (scale - 1)
-            }
-            .onEnded { value in
-                let scale = scaleFactor(for: value.translation.width)
-                let targetSize = CGSize(width: frame.width * scale, height: frame.height * scale)
-
-                // setWidth/setHeight clamp to min/max bounds — read back
-                // the ACTUAL applied size before scaling the drawing's
-                // strokes, so its content size tracking never drifts
-                // from what's really stored.
-                let finalWidth = store.setWidth(element.id, to: targetSize.width)
-                let finalHeight = store.setHeight(element.id, to: targetSize.height)
-                store.scaleDrawing(element.id, to: CGSize(width: finalWidth, height: finalHeight))
-
-                widthDelta = 0
-                heightDelta = 0
-            }
-    }
-
-    private func scaleFactor(for horizontalTranslation: CGFloat) -> CGFloat {
-        guard frame.width > 0 else { return 1 }
-        let minScale = DesignSystem.minBlockWidth / frame.width
-        return max((frame.width + horizontalTranslation) / frame.width, minScale)
     }
 }

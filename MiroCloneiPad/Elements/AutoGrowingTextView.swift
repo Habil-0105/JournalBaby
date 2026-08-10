@@ -3,20 +3,24 @@ import UIKit
 
 /// A text view with no fixed height: every time its text (or the width
 /// it's given) changes, it reports its own intrinsic content height via
-/// `onHeightChange`, so the caller can grow the block's frame to match.
+/// `onHeightChange`, so the caller can grow the element's frame to match.
 ///
 /// SwiftUI's native `TextEditor` doesn't expose intrinsic content size in
-/// a way that plays well with a custom layout engine, so this is a thin
+/// a way that plays well with a freeform canvas, so this is a thin
 /// `UITextView` wrapper instead — `sizeThatFits` gives an exact answer.
+///
+/// Editing is opt-in: the view is only editable when focused, and it
+/// reports focus transitions back so the store knows whether dragging the
+/// text block should move it or let the caret handle the touch.
 struct AutoGrowingTextView: UIViewRepresentable {
     @Binding var text: String
-    /// Only interactive/editable when its block is selected — mirrors
-    /// `DrawingElementView`'s "select first, then interact" pattern so
-    /// tapping the block to select it doesn't get swallowed by the text
-    /// view's own touch handling.
+    /// Only interactive/editable when it's focused (double-tap / explicit
+    /// edit). Reflects `CanvasStore.focusedTextID`.
     var isEditable: Bool
     var width: CGFloat
     var onHeightChange: (CGFloat) -> Void
+    var onFocusDidBegin: () -> Void
+    var onFocusDidEnd: () -> Void
 
     func makeUIView(context: Context) -> UITextView {
         let view = UITextView()
@@ -42,6 +46,11 @@ struct AutoGrowingTextView: UIViewRepresentable {
         }
         uiView.isEditable = isEditable
         uiView.isUserInteractionEnabled = isEditable
+        if isEditable && !uiView.isFirstResponder {
+            uiView.becomeFirstResponder()
+        } else if !isEditable && uiView.isFirstResponder {
+            uiView.resignFirstResponder()
+        }
         recalculateHeight(for: uiView)
     }
 
@@ -51,7 +60,7 @@ struct AutoGrowingTextView: UIViewRepresentable {
     /// a `UIViewRepresentable` wrapping a non-scrolling `UITextView` has
     /// no reliable intrinsic width to lay out against, so wrapping never
     /// kicks in and the text view just grows however wide its content
-    /// wants — which is exactly the "types past the block/page" bug.
+    /// wants — which is exactly the "types past the block" bug.
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
         let targetWidth = proposal.width ?? width
         let size = uiView.sizeThatFits(CGSize(width: targetWidth, height: .greatestFiniteMagnitude))
@@ -79,6 +88,14 @@ struct AutoGrowingTextView: UIViewRepresentable {
         func textViewDidChange(_ textView: UITextView) {
             parent.text = textView.text
             parent.recalculateHeight(for: textView)
+        }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            parent.onFocusDidBegin()
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            parent.onFocusDidEnd()
         }
     }
 }
