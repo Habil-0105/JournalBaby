@@ -28,4 +28,7 @@ enum DesignSystem {
     static let pageHeaderHeight: CGFloat = 36
     static let pageShadowRadius: CGFloat = 8
     static let pageShadowY: CGFloat = 4
+
+    /// Width of the central physical book spine gutter on iPad 2-page spread.
+    static let spineGutterWidth: CGFloat = 24
 }

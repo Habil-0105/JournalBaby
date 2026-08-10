@@ -72,3 +72,11 @@ struct PageLayout: Identifiable, Equatable {
     let elements: [PlacedElement]
 }
 
+/// Represents an open physical book spread containing 1 page (iPhone) or 2 pages (iPad).
+struct BookSpread: Identifiable, Equatable {
+    let id: Int
+    let spreadIndex: Int
+    let leftPage: PageLayout?
+    let rightPage: PageLayout?
+}
+

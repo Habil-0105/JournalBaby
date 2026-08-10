@@ -2,21 +2,30 @@ import SwiftUI
 import PhotosUI
 
 struct ContentView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var store = CanvasStore()
     @State private var photosPickerItem: PhotosPickerItem?
     @State private var showAudioSheet = false
 
+    private var isPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad || horizontalSizeClass == .regular
+    }
+
     var body: some View {
         NavigationStack {
             GeometryReader { geo in
-                let pages = store.layoutPages(pageWidth: geo.size.width, pageHeight: geo.size.height)
-                let pageCount = max(pages.count, 1)
+                let singlePageWidth = isPad ? (max(geo.size.width - DesignSystem.pagePadding * 2 - DesignSystem.spineGutterWidth, 200) / 2 + DesignSystem.pagePadding * 2) : geo.size.width
+                let pages = store.layoutPages(pageWidth: singlePageWidth, pageHeight: geo.size.height)
+                let spreads = store.layoutSpreads(isTwoPageSpread: isPad, pageWidth: geo.size.width, pageHeight: geo.size.height)
+                let totalPages = max(pages.count, 1)
 
                 BookPageCurlView(
                     store: store,
-                    pages: pages,
+                    spreads: spreads,
+                    isTwoPageSpread: isPad,
                     pageWidth: geo.size.width,
-                    pageHeight: geo.size.height
+                    pageHeight: geo.size.height,
+                    totalPages: totalPages
                 )
                 .background(Color(.systemGroupedBackground))
                 .onChange(of: pages.count) { _, newCount in

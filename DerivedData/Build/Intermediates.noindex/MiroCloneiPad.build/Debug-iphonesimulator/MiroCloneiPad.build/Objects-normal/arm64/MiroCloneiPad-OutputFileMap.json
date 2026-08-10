@@ -26,6 +26,16 @@
     "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookPageCurlView.swiftdeps",
     "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookPageCurlView~partial.swiftmodule"
   },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Canvas/BookSpreadView.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookSpreadView.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookSpreadView.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookSpreadView.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookSpreadView.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookSpreadView.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookSpreadView.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookSpreadView.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookSpreadView~partial.swiftmodule"
+  },
   "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Canvas/ElementContainerView.swift" : {
     "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/ElementContainerView.swiftconstvalues",
     "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/ElementContainerView.d",

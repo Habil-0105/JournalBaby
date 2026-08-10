@@ -16,6 +16,26 @@
     "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftdeps",
     "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/GeneratedAssetSymbols~partial.swiftmodule"
   },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Canvas/BookPageCurlView.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookPageCurlView.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookPageCurlView.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookPageCurlView.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookPageCurlView.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookPageCurlView.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookPageCurlView.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookPageCurlView.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookPageCurlView~partial.swiftmodule"
+  },
+  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Canvas/BookSpreadView.swift" : {
+    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookSpreadView.swiftconstvalues",
+    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookSpreadView.d",
+    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookSpreadView.dia",
+    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookSpreadView.o",
+    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookSpreadView.bc",
+    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookSpreadView.o",
+    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookSpreadView.swiftdeps",
+    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/BookSpreadView~partial.swiftmodule"
+  },
   "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Canvas/ElementContainerView.swift" : {
     "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/ElementContainerView.swiftconstvalues",
     "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/ElementContainerView.d",
@@ -35,16 +55,6 @@
     "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/PageView.o",
     "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/PageView.swiftdeps",
     "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/PageView~partial.swiftmodule"
-  },
-  "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Canvas/PageViewController.swift" : {
-    "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/PageViewController.swiftconstvalues",
-    "dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/PageViewController.d",
-    "diagnostics" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/PageViewController.dia",
-    "index-unit-output-path" : "/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/PageViewController.o",
-    "llvm-bc" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/PageViewController.bc",
-    "object" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/PageViewController.o",
-    "swift-dependencies" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/PageViewController.swiftdeps",
-    "swiftmodule" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/PageViewController~partial.swiftmodule"
   },
   "/Users/habil/Coding/iOS/MiroCloneiPad/MiroCloneiPad/Canvas/ScribbleCanvasView.swift" : {
     "const-values" : "/Users/habil/Coding/iOS/MiroCloneiPad/DerivedData/Build/Intermediates.noindex/MiroCloneiPad.build/Debug-iphonesimulator/MiroCloneiPad.build/Objects-normal/arm64/ScribbleCanvasView.swiftconstvalues",

@@ -221,6 +221,43 @@ final class CanvasStore: ObservableObject {
         return pages
     }
 
+    /// Computes spreads for either single-page mode (iPhone) or two-page book spread mode (iPad).
+    func layoutSpreads(isTwoPageSpread: Bool, pageWidth: CGFloat, pageHeight: CGFloat) -> [BookSpread] {
+        let singlePageWidth: CGFloat
+        if isTwoPageSpread {
+            let availableWidth = max(pageWidth - DesignSystem.pagePadding * 2 - DesignSystem.spineGutterWidth, 200)
+            singlePageWidth = availableWidth / 2 + DesignSystem.pagePadding * 2
+        } else {
+            singlePageWidth = pageWidth
+        }
+
+        let pages = layoutPages(pageWidth: singlePageWidth, pageHeight: pageHeight)
+
+        if !isTwoPageSpread {
+            return pages.map { page in
+                BookSpread(id: page.pageIndex, spreadIndex: page.pageIndex, leftPage: page, rightPage: nil)
+            }
+        }
+
+        var spreads: [BookSpread] = []
+        var i = 0
+        var spreadIndex = 0
+
+        while i < pages.count {
+            let left = pages[i]
+            let right = (i + 1 < pages.count) ? pages[i + 1] : nil
+            spreads.append(BookSpread(id: spreadIndex, spreadIndex: spreadIndex, leftPage: left, rightPage: right))
+            i += 2
+            spreadIndex += 1
+        }
+
+        if spreads.isEmpty {
+            spreads.append(BookSpread(id: 0, spreadIndex: 0, leftPage: PageLayout(id: 0, pageIndex: 0, elements: []), rightPage: nil))
+        }
+
+        return spreads
+    }
+
     func updateTextSlice(canonicalID: UUID, sliceIndex: Int, newText: String, slices: [String]) {
         guard let idx = elements.firstIndex(where: { $0.id == canonicalID }) else { return }
         var updatedSlices = slices
