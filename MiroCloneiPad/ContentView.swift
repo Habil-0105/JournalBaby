@@ -7,22 +7,17 @@ struct ContentView: View {
     @State private var photosPickerItem: PhotosPickerItem?
     @State private var showAudioSheet = false
 
-    private var isPad: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad || horizontalSizeClass == .regular
-    }
-
     var body: some View {
         NavigationStack {
             GeometryReader { geo in
-                let singlePageWidth = isPad ? (max(geo.size.width - DesignSystem.pagePadding * 2 - DesignSystem.spineGutterWidth, 200) / 2 + DesignSystem.pagePadding * 2) : geo.size.width
+                let singlePageWidth = geo.size.width
                 let pages = store.layoutPages(pageWidth: singlePageWidth, pageHeight: geo.size.height)
-                let spreads = store.layoutSpreads(isTwoPageSpread: isPad, pageWidth: geo.size.width, pageHeight: geo.size.height)
+                let spreads = store.layoutSpreads(pageWidth: geo.size.width, pageHeight: geo.size.height)
                 let totalPages = max(pages.count, 1)
 
                 BookPageCurlView(
                     store: store,
                     spreads: spreads,
-                    isTwoPageSpread: isPad,
                     pageWidth: geo.size.width,
                     pageHeight: geo.size.height,
                     totalPages: totalPages
@@ -31,6 +26,9 @@ struct ContentView: View {
                 .onChange(of: pages.count) { _, newCount in
                     if store.currentPageIndex >= newCount {
                         store.currentPageIndex = max(newCount - 1, 0)
+                        print("111")
+                    } else {
+                        print("222")
                     }
                 }
             }

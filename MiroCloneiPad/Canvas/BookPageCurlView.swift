@@ -7,7 +7,6 @@ import UIKit
 struct BookPageCurlView: UIViewControllerRepresentable {
     @ObservedObject var store: CanvasStore
     var spreads: [BookSpread]
-    var isTwoPageSpread: Bool
     var pageWidth: CGFloat
     var pageHeight: CGFloat
     var totalPages: Int
@@ -25,7 +24,7 @@ struct BookPageCurlView: UIViewControllerRepresentable {
         pageViewController.dataSource = context.coordinator
         pageViewController.delegate = context.coordinator
 
-        let currentSpreadIndex = isTwoPageSpread ? store.currentPageIndex / 2 : store.currentPageIndex
+        let currentSpreadIndex = store.currentPageIndex
         let initialVC = context.coordinator.makeHostingController(for: currentSpreadIndex)
         pageViewController.setViewControllers([initialVC], direction: .forward, animated: false)
 
@@ -53,7 +52,6 @@ struct BookPageCurlView: UIViewControllerRepresentable {
                 BookSpreadView(
                     store: parent.store,
                     spread: spread,
-                    isTwoPageSpread: parent.isTwoPageSpread,
                     pageWidth: parent.pageWidth,
                     pageHeight: parent.pageHeight,
                     totalPages: parent.totalPages
@@ -64,7 +62,7 @@ struct BookPageCurlView: UIViewControllerRepresentable {
         }
 
         func sync(uiViewController: UIPageViewController) {
-            let targetSpreadIndex = parent.isTwoPageSpread ? parent.store.currentPageIndex / 2 : parent.store.currentPageIndex
+            let targetSpreadIndex = parent.store.currentPageIndex
             let safeIndex = min(max(targetSpreadIndex, 0), max(parent.spreads.count - 1, 0))
 
             if let visibleVC = uiViewController.viewControllers?.first as? PageHostingController {
@@ -74,7 +72,6 @@ struct BookPageCurlView: UIViewControllerRepresentable {
                     BookSpreadView(
                         store: parent.store,
                         spread: spread,
-                        isTwoPageSpread: parent.isTwoPageSpread,
                         pageWidth: parent.pageWidth,
                         pageHeight: parent.pageHeight,
                         totalPages: parent.totalPages
@@ -119,7 +116,7 @@ struct BookPageCurlView: UIViewControllerRepresentable {
             if completed,
                let visibleVC = pageViewController.viewControllers?.first as? PageHostingController {
                 DispatchQueue.main.async {
-                    let newPageIndex = self.parent.isTwoPageSpread ? visibleVC.pageIndex * 2 : visibleVC.pageIndex
+                    let newPageIndex = visibleVC.pageIndex
                     self.parent.store.currentPageIndex = newPageIndex
                 }
             }
