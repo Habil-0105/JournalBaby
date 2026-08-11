@@ -101,10 +101,10 @@ MiroCloneApp (@main)
 
 **Core data flow**
 
-- `CanvasStore` (`@Published` `pages`, `currentPageIndex`, `writingMode`, plus UI state `selectedElementID`, `focusedTextID`, `drawMode`, `canvasSize`) is the **single source of truth**. `writingMode` is the new mode switch: when `true`, the app shows the large centered writing canvas (only the current page, `PKCanvasView` interactive); when `false`, the app shows the carousel preview (small current page with side pages deep below, `PKCanvasView` non-interactive). `drawMode` now only mirrors `writingMode` for the toolbar state and is no longer the sole gate on drawing.
+- `CanvasStore` (`@Published` `pages`, `currentPageIndex`, `writingMode`, plus UI state `selectedElementID`, `focusedTextID`, `drawMode`, `canvasSize`) is the **single source of truth**. `writingMode` is the new mode switch: when `true`, the app shows the large centered writing canvas (only the current page, `PKCanvasView` interactive); when `false`, the app shows the carousel preview (small current page with side pages deep below, `PKCanvasView` non-interactive). `drawMode` now only mirrors `writingMode` (set on entry, cleared on exit) and is no longer the gate on element interaction or drawing — it survives only as a guard for the carousel swipe and page background taps.
 - `elements` and `scribble` on the store are **computed accessors** into `pages[currentPageIndex]` so views keep reading `store.elements` / `store.scribble` without knowing which page is current. `scribble` has a custom setter that writes back to the current page.
 - `PageCarouselView` and every `PageContentView` / `ElementContainerView` observe the store via `@ObservedObject`.
-- All mutations go *into* the store via methods (`addText`, `addImage(data:)`, `addAudio(fileURL:duration:)`, `moveElement`, `setWidth`, `setHeight`, `setTextHeight`, `updateElementText`, `select`, `focusText`, `clearTextFocus`, `toggleDrawMode`, `enterWritingMode`, `exitWritingMode`, `remove`, `updateCanvasSize`, `addPage`, `switchToPage(at:)`, `removePage(at:)`).
+- All mutations go *into* the store via methods (`addText`, `addImage(data:)`, `addAudio(fileURL:duration:)`, `moveElement`, `setWidth`, `setHeight`, `setTextHeight`, `updateElementText`, `select`, `focusText`, `clearTextFocus`, `enterWritingMode`, `exitWritingMode`, `remove`, `updateCanvasSize`, `addPage`, `switchToPage(at:)`, `removePage(at:)`). (`toggleDrawMode()` also exists but has no remaining callers — see §18.)
 - Position is a **stored** property on `CanvasElement`, not derived — this is what makes "moving one block never affects another" trivially true.
 
 **Concurrency model**
@@ -454,15 +454,17 @@ Writing mode → exit writing mode
     • tap "Exit Writing" toolbar button                 ─► store.exitWritingMode()
 
 In writing mode (store.writingMode == true):
-  ─► ScribbleCanvasView.setDrawMode(true, on:)
+  ─► ScribbleCanvasView.setWritingMode(true, on:)
         ─► toolPicker.addObserver / setVisible(true, forFirstResponder:)
         ─► PKCanvasView.becomeFirstResponder()      (system tool picker appears)
   ─► canvasViewDrawingDidChange
         ─► if drawing byte-equals lastAssignedDrawingData → echo, skip
         ─► else → store.scribble = canvasView.drawing
 
-Toggle off  ─► toolPicker hidden, PKCanvasView resigns first responder, interaction disabled,
-               element layer becomes hit‑testable again.
+Exit / toggle off  ─► setWritingMode(false): toolPicker hidden, PKCanvasView resigns
+                       first responder, interaction disabled. Because the element layer
+                       stays gated on `isCurrent && store.writingMode`, exiting returns
+                       the carousel with elements inert again.
 ```
 
 ### Rendering non-current pages
@@ -481,7 +483,7 @@ This means switching pages is just a layout update — no PKCanvasView is create
 2. **Drag writes on every tick, not on commit.** The drag's `onChanged` calls `store.moveElement` with the current `start + translation`, so model / visual / hit‑test rectangle are always in lockstep — no temporary visual offset to reconcile on `onEnded`.
 3. **Cascading default placement for new blocks.** `nextDefaultPosition()` is a creation‑time convenience (`(inset + col*spacing, inset + row*spacing)`); once created, the element owns its position.
 4. **The board renders at a fixed 1:1 scale.** There is no zoom or pan. Element drag, width/height handles, and PencilKit touches all read the `"canvas"` named coordinate space directly. Because `PageCarouselView` reports a *scaled-down* `pageSize` (≈ 45% of container width) to `store.updateCanvasSize`, the effective element coordinate space is also that scaled size — element positions are clamped against the page's own size, not the screen's.
-  5. **Mode boundary is the single gate on element interaction.** The element `ForEach` in `PageContentView` is gated by `.allowsHitTesting(isCurrent && store.writingMode)`. In carousel mode (`!writingMode`) no element on the current page is hit-testable — taps, double-taps, drags, and resize handles all fall through to the parent carousel (where the swipe and pinch-in gestures live). In writing mode the same elements are fully interactive. `drawMode` is no longer the gate; it only mirrors `writingMode` for the toolbar and is reset by `exitWritingMode()` so the carousel's swipe guard (`!store.drawMode`) re-enables on return.
+  5. **Mode boundary is the single gate on element interaction.** The element `ForEach` in `PageContentView` is gated by `.allowsHitTesting(isCurrent && store.writingMode)`. In carousel mode (`!writingMode`) no element on the current page is hit-testable — taps, double-taps, drags, and resize handles all fall through to the parent carousel (where the swipe and pinch-in gestures live). In writing mode the same elements are fully interactive. `drawMode` is no longer the gate; it only mirrors `writingMode` (reset by `exitWritingMode()`) and survives as the carousel's swipe guard (`!store.drawMode`, plus the page background-tap guard in `PageContentView`) so navigation re-enables on return.
 6. **Text editing is opt‑in and isolated.** A text block is draggable when *not* focused, so caret/selection gestures always win during editing. Height is auto‑measured (`AutoGrowingTextView.sizeThatFits` + `recalculateHeight` → `store.setTextHeight`).
 7. **Scribble strokes live in their own layer.** `store.scribble: PKDrawing` is independent of `elements`; PencilKit is the source of truth while Draw mode is on. Only the current page instantiates a `PKCanvasView`; neighbor pages render their scribbles as a static `UIImage` snapshot.
 8. **Block content lives in the Documents directory.** Image bytes are written directly into `Documents/Images/<UUID>.jpg`; audio is copied from a temp recording into `Documents/Audio/<UUID>.m4a`. The `CanvasElement` stores only the file name.
@@ -601,7 +603,7 @@ These are patterns repeatedly used in the code that future work should follow:
 1. **Store as the single source of truth.** Every state change goes through a `CanvasStore` method; views never mutate `CanvasElement` or `Page` directly. (`ElementContainerView` writes only via `store.moveElement`, `store.setWidth`, etc.)
 2. **Mode separation (carousel vs writing).** Carousel mode is **browse only** — `PKCanvasView.isUserInteractionEnabled` is `false` (no strokes), and the element `ForEach` in `PageContentView` is gated `.allowsHitTesting(isCurrent && store.writingMode)` so all element gestures (tap, double-tap, drag, resize, delete) are inert. Writing mode is the only place the current page is interactive: `PKCanvasView` accepts strokes and the element layer is hit-testable. **Entry paths into writing mode:** pinch-in (fingers spreading, `magnification > 1.3`) on the carousel, the Scribble toolbar button, OR any of the other three toolbar tools (Add Text / Add Image / Add Audio) — every tool tap in carousel mode calls `JournalView.enterWritingModeIfNeeded()` before performing its action. **Exit paths:** pinch-out (fingers closing, `magnification < 0.7`) in `WritingCanvasView`, or the "Exit Writing" toolbar button. `writingMode` is the central switch — don't bypass it by gating on `drawMode` alone.
 3. **Stored position, no derived layout.** New block kinds or layout strategies should keep position stored on the element. Resist any "reflow on neighbour change" temptation.
-4. **Drag‑writes‑on‑every‑tick.** Gestures that change geometry should update the model on `onChanged`, not on `onEnded` (matches `ElementContainerView.moveGesture`). This keeps the visual frame, hit test, and model position identical at all times.
+4. **Drag‑writes‑on‑every‑tick.** Gestures that change geometry should update the model on `onChanged`, not on `onEnded` (matches `ElementContainerView.moveGesture`). This keeps the visual frame, hit test, and model position identical at all times. The width/height resize handles are the exception — they preview against a local delta and commit on `onEnded` (see `widthGesture` / `heightGesture`).
 5. **DesignSystem is the only place for sizing tokens.** Don't hardcode `cornerRadius`, `minBlockWidth`, padding, etc. in views.
 6. **UIViewRepresentable wrappers are the bridge, not the model.** `AutoGrowingTextView` and `ScribbleCanvasView` are intentionally thin; all state lives in `CanvasStore` and is mirrored via delegate callbacks.
 7. **Coordinate space per-page.** `PageContentView` declares `.coordinateSpace(.named("canvas"))`. Drag gestures inside `ElementContainerView` rely on this to read coordinates already in the page's own coordinate system. Don't move the declaration or wrap the page in a `scaleEffect` / `offset` modifier — element drag math is written against the page's 1:1 frame.
@@ -626,7 +628,7 @@ These are patterns repeatedly used in the code that future work should follow:
 - **Logging is `print`-based** (`print("Failed to save image: …")`, `print("Recording error: …")`, `print("Playback error: …")`). No structured logging, no OSLog.
 - **No localization infrastructure in place.** Strings are inline English literals; `STRING_CATALOG_GENERATE_SYMBOLS = YES` is set but no `.xcstrings` catalog is present yet.
 - **`AudioPlaybackManager` per element.** Each `AudioElementView` creates its own `AudioPlaybackManager`. There's no shared audio session coordinator — playing two audio blocks simultaneously will both set the session to `.playback` and both play at once. The intent is unclear.
-- **Carousel reports a scaled-down `canvasSize` to the store.** Because `PageCarouselView` calls `store.updateCanvasSize(pageSize)` with the paper‑like size (≈ 45% of container width), element drag/resize clamping uses that small size. Elements placed near the "right" edge of the user's view will hit the `canvasSize.width - element.width` clamp before reaching the visible page edge. The user has no visual cue that the coordinate space ends before the visible page does.
+- **`CanvasStore.toggleDrawMode()` is dead code.** No view calls it: the Scribble toolbar button now routes through `enterWritingMode()` / `exitWritingMode()`, and `drawMode` is only ever written by the store itself (`enterWritingMode`, `exitWritingMode`, `switchToPage`, `removePage`, `select`, `focusText`). It exists only as a leftover toggle.
 - **Neighboring pages re-render their static scribble image on every render.** `PageContentView.staticScribbleImage` calls `page.scribble.image(from:scale:)` per body evaluation. PencilKit's `PKDrawing.image(from:scale:)` is not free; on a 5‑page board this fires 4× per SwiftUI invalidation.
 
 ### Resolved
@@ -658,7 +660,7 @@ MiroCloneApp
          ├── CanvasStore                    (created here, passed down)
          ├── PageCarouselView              ── reads/writes store.pages, store.currentPageIndex, store.pendingDeletion; calls store.requestDeletePage (delete animation) / store.confirmPendingDeletion; reports scaled pageSize to store.updateCanvasSize; drives visualPageIndex from drag and during delete animations, animates on commit
          │     └── PageContentView × (pages.count ± 1)
-         │           ├── ScribbleCanvasView       (only when isCurrent)  ── reads/writes store.scribble (current page), store.drawMode; boundPageID + lastAssignedDrawingData track identity + echo
+         │           ├── ScribbleCanvasView       (only when isCurrent)  ── reads/writes store.scribble (current page); gates interaction + tool picker on store.writingMode; boundPageID + lastAssignedDrawingData track identity + echo
          │           ├── ElementContainerView × N  ── reads/writes store.selectedElementID, store.moveElement, .setWidth, .setHeight, .remove
          │           │     ├── TextElementView    ── store.updateElementText, store.setTextHeight, store.focusText, store.clearTextFocus
          │           │     │     └── AutoGrowingTextView  (UIViewRepresentable)
@@ -687,11 +689,11 @@ The carousel is the entire board in **carousel mode**, modeled as a deck of page
 
 In **writing mode**, `JournalView` swaps in `WritingCanvasView`, which renders a single `PageContentView` at writing‑canvas size (≈ 85% of container width × 75% of height at paper aspect 1.3). The page strip, neighbours, and delete pill are all hidden; the `PKCanvasView` becomes first responder with the system `PKToolPicker` visible. The user can write / erase / use any PencilKit tool. The only way out is pinch‑out (which calls `store.exitWritingMode()`, tearing the writing canvas down and returning to the carousel) or the "Exit Writing" toolbar button. `store.canvasSize` is updated to the writing page size while in this mode, so element drag/resize clamps match the writing canvas.
 
-Each `PageContentView` renders one page: a paper background, a scribble layer (interactive `PKCanvasView` for the current page, static `UIImage` snapshot for neighbors), and a `ForEach` of `ElementContainerView`s for each element. `PageContentView` owns its own `"canvas"` coordinate space, so element drag math is always in the page's own coordinate system. Element hit‑testing is gated to `isCurrent && !drawMode`, so in writing mode (where `drawMode` is forced `true`) the page is purely a writing surface — text/image/audio elements are non‑interactive there.
+Each `PageContentView` renders one page: a paper background, a scribble layer (interactive `PKCanvasView` for the current page, static `UIImage` snapshot for neighbors), and a `ForEach` of `ElementContainerView`s for each element. `PageContentView` owns its own `"canvas"` coordinate space, so element drag math is always in the page's own coordinate system. Element hit‑testing is gated to `isCurrent && store.writingMode`, so neighbouring pages are never interactive and in carousel mode even the current page's elements are inert previews; in writing mode the current page's elements are fully interactive (tap, double-tap, drag, resize, delete) while the `PKCanvasView` underneath still accepts scribbles in the empty areas.
 
 The store holds a list of `Page`s and a `currentPageIndex`. Every `elements` / `scribble` read or write goes through the current page — views don't know which page is current, only the store does. UI‑only state (selection, text focus, draw mode, canvas size, writing mode) is global because it follows the user, not the page; switching pages or entering/exiting writing mode clears selection/focus.
 
-The store owns geometry. The `ElementContainerView`'s drag gesture does not maintain a "visual offset" — it computes the new top‑left point on every frame and writes it straight to `store.moveElement(_:to:)`, so the model is always the truth and there is nothing to reconcile. Resize handles work the same way. Text editing is opt‑in: a double‑tap focuses a block, a `UITextView` becomes the first responder, every change bubbles a measured height back so the block's frame matches the actual text.
+The store owns geometry. The `ElementContainerView`'s drag gesture does not maintain a "visual offset" — it computes the new top‑left point on every frame and writes it straight to `store.moveElement(_:to:)`, so the model is always the truth and there is nothing to reconcile. The resize handles are the deliberate exception: they keep a local per‑gesture delta (`widthDelta` / `heightDelta`) for a live preview and commit `store.setWidth` / `store.setHeight` once on `onEnded`. Text editing is opt‑in: a double‑tap focuses a block, a `UITextView` becomes the first responder, every change bubbles a measured height back so the block's frame matches the actual text.
 
 When the user switches pages, `ScribbleCanvasView` swaps `uiView.drawing` to the new page's drawing. The echo of that programmatic swap is filtered out by byte‑equality against `lastAssignedDrawingData`, so PencilKit doesn't bounce the new page's strokes back into the old page (and real user strokes, which are always byte‑different, always reach the store).
 
@@ -703,11 +705,11 @@ There is one screen, one store, no network, no database, no third‑party depend
 
 ### Confirmed
 
-- All Swift source files in `MiroCloneiPad/` were read end‑to‑end (19 files: the original 16, plus `Page.swift`, `PageCarouselView.swift`, `PageContentView.swift`, and `WritingCanvasView.swift`; the legacy `FreeformCanvasView.swift` and `PageStripView.swift` were removed in a cleanup pass).
+- All 16 Swift source files in `MiroCloneiPad/` were read end‑to‑end for this review (the legacy `FreeformCanvasView.swift` and `PageStripView.swift` were removed in a cleanup pass — commit `e0b13f7`).
 - Build is clean (`xcodebuild` succeeds; only the pre-existing `requestRecordPermission` deprecation warning).
 - `JournalView`'s body swaps between `PageCarouselView` (carousel mode) and `WritingCanvasView` (writing mode) based on `store.writingMode` (confirmed by reading `JournalView.swift`).
 - `writingMode` is the central mode switch: true → writing canvas (large centered current page, `PKCanvasView` interactive), false → carousel preview (small pages with deep neighbours, `PKCanvasView` non-interactive).
-- Writing mode is entered via the Scribble toolbar button or `MagnifyGesture` (magnification < 0.7) on `PageCarouselView`; exited via the "Exit Writing" toolbar button or `MagnifyGesture` (magnification > 1.35) on `WritingCanvasView`.
+- Writing mode is entered via a `MagnifyGesture` with `magnification > 1.3` (fingers spreading) on `PageCarouselView`, the Scribble toolbar button, or any of the other three toolbar tools (Add Text / Add Image / Add Audio, each routed through `JournalView.enterWritingModeIfNeeded()`); exited via the "Exit Writing" toolbar button or a `MagnifyGesture` with `magnification < 0.7` (fingers closing) on `WritingCanvasView`.
 - `exitWritingMode()` clears `writingMode`, `drawMode`, `selectedElementID`, and `focusedTextID` — so the carousel's swipe guard (`!store.drawMode`) is re‑enabled on the very first return from writing mode (the original bug was that `drawMode` was not reset, silently suppressing every swipe until the user added a page).
 - `PageContentView` declares the `"canvas"` coordinate space per-page.
 - `ScribbleCanvasView` uses `lastAssignedDrawingData: Data?` for echo‑skipping (verified by reading `ScribbleCanvasView.swift`); `makeUIView` seeds it so the first echo after a fresh canvas doesn't bounce back into the store.
@@ -717,7 +719,7 @@ There is one screen, one store, no network, no database, no third‑party depend
 - `elements` and `scribble` on the store are computed accessors into `pages[currentPageIndex]`.
 - Three element kinds: `.text`, `.image`, `.audio` (via `ElementKind` enum).
 - Multi‑page behavior: app starts with one empty page, `addPage()` appends, `removePage(at:)` removes (no confirmation in the new design) and falls back to an empty page if the last one is deleted, `switchToPage(at:)` clears selection/focus/draw mode.
-- `deletePage(at:)` is animated via `requestDeletePage(at:)` + `confirmPendingDeletion()` with the carousel ghost + rising replacement pattern.
+- Page deletion is animated via `requestDeletePage(at:)` (grabs `store.pendingDeletion`) → carousel ghost + rising-replacement animation → `confirmPendingDeletion()` → `removePage(at:)`.
 - Media persistence path: `Documents/Images/` and `Documents/Audio/` (`CanvasStore.imagesURL` / `audioURL`).
 - `CanvasElement` is `Codable` but `CanvasStore.pages` is **not currently persisted** across launches.
 - No test target, no third‑party dependencies.
