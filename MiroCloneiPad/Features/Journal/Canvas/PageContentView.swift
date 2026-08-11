@@ -55,7 +55,20 @@ struct PageContentView: View {
         }
         .alert("Delete this page?", isPresented: $showDeleteConfirmation) {
             Button("Delete", role: .destructive) {
-                store.removePage(at: pageIndex)
+                if store.writingMode {
+                    // No carousel to play the exit + entry animation here, so
+                    // remove directly, then leave writing mode: the deleted
+                    // page's index is already fixed up by `removePage`, and
+                    // `exitWritingMode` swaps back to the carousel and clears
+                    // any lingering selection/focus/draw state.
+                    store.removePage(at: pageIndex)
+                    store.exitWritingMode()
+                } else {
+                    // Route through `requestDeletePage` so `PageCarouselView`
+                    // can play the exit + entry animation. The actual removal
+                    // happens once the carousel confirms the deletion.
+                    store.requestDeletePage(at: pageIndex)
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -99,16 +112,10 @@ struct PageContentView: View {
 
     private var deleteButton: some View {
         Button {
-            if store.writingMode {
-                // No carousel to play the exit + entry animation here, and
-                // there's no preview of the result, so confirm first.
-                showDeleteConfirmation = true
-            } else {
-                // Route through `requestDeletePage` so `PageCarouselView` can
-                // play the exit + entry animation. The actual removal happens
-                // once the carousel confirms the deletion.
-                store.requestDeletePage(at: pageIndex)
-            }
+            // Always confirm before deleting. In writing mode there's no
+            // carousel to animate the exit, so the dialog is the only guard;
+            // in carousel mode the dialog precedes the animated delete.
+            showDeleteConfirmation = true
         } label: {
             Text("Delete")
                 .font(.subheadline.weight(.medium))
