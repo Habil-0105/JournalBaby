@@ -13,7 +13,7 @@ The product surface is intentionally minimal:
 
 Each block owns its own position (top‑left) and size on the board. There is no flow layout, no paging, no reflow — moving, adding or deleting a block never affects another block's placement. This is the deliberate design pivot from earlier git history (an earlier "pages" / 2‑page / 3D‑switch design was removed in commits `b87737e`, `d3ecd86`, `99ff378` and re‑introduced as a flatter multi‑page model — see §6/§11).
 
-**Current state:** Working iOS app, builds in Xcode 26.6, targeted at iOS 17.6+, Swift 5, supports iPhone and iPad (`TARGETED_DEVICE_FAMILY = "1,2"`). It is in active development but already feature‑complete for the three block kinds + zoom + Scribble.
+**Current state:** Working iOS app, builds in Xcode 26.6, targeted at iOS 17.6+, Swift 5, supports iPhone and iPad (`TARGETED_DEVICE_FAMILY = "1,2"`). It is in active development but already feature‑complete for the three block kinds + Scribble. (Pinch‑to‑zoom was removed — see §18.)
 
 ## 2. Technology Stack
 
@@ -51,7 +51,7 @@ Each block owns its own position (top‑left) and size on the board. There is no
 │   │       │   ├── CanvasElement.swift   Codable struct for one block
 │   │       │   └── CanvasStore.swift     ObservableObject — single source of truth
 │   │       ├── Canvas/
-│   │       │   ├── FreeformCanvasView.swift   Board container, zoom/pan, element layout
+│   │       │   ├── FreeformCanvasView.swift   Board container, element layout
 │   │       │   ├── ElementContainerView.swift Per‑block chrome: selection, drag, resize handles
 │   │       │   ├── ScribbleCanvasView.swift   UIViewRepresentable wrapping PKCanvasView
 │   │       │   └── PageStripView.swift        Horizontal page thumbnails + "+"
@@ -82,7 +82,7 @@ The app is a thin, single‑layer SwiftUI app with one global `ObservableObject`
 MiroCloneApp (@main)
    └─► JournalView            (top‑level SwiftUI screen, owns CanvasStore)
          ├─► VStack
-         │     ├─► FreeformCanvasView   (the board surface + zoom, scoped to currentPage)
+         │     ├─► FreeformCanvasView   (the board surface, scoped to currentPage)
          │     │     ├─► ScribbleCanvasView (PKCanvasView, only when drawMode; swaps drawing on page change)
          │     │     └─► ElementContainerView × N (one per CanvasElement on currentPage)
          │     │           └─► TextElementView | ImageElementView | AudioElementView
@@ -94,10 +94,10 @@ MiroCloneApp (@main)
 
 **Core data flow**
 
-- `CanvasStore` (`@Published` `pages`, `currentPageIndex`, plus UI state `selectedElementID`, `focusedTextID`, `drawMode`, `canvasSize`, `zoomScale`, `zoomOffset`) is the **single source of truth**.
+- `CanvasStore` (`@Published` `pages`, `currentPageIndex`, plus UI state `selectedElementID`, `focusedTextID`, `drawMode`, `canvasSize`) is the **single source of truth**.
 - `elements` and `scribble` on the store are **computed accessors** into `pages[currentPageIndex]` so views keep reading `store.elements` / `store.scribble` without knowing which page is current. `scribble` has a custom setter that writes back to the current page.
 - `FreeformCanvasView`, every `ElementContainerView`, and `PageStripView` observe the store via `@ObservedObject`.
-- All mutations go *into* the store via methods (`addText`, `addImage(data:)`, `addAudio(fileURL:duration:)`, `moveElement`, `setWidth`, `setHeight`, `setTextHeight`, `updateElementText`, `select`, `focusText`, `clearTextFocus`, `toggleDrawMode`, `remove`, `resetZoom`, `updateCanvasSize`, `addPage`, `switchToPage(at:)`, `removePage(at:)`).
+- All mutations go *into* the store via methods (`addText`, `addImage(data:)`, `addAudio(fileURL:duration:)`, `moveElement`, `setWidth`, `setHeight`, `setTextHeight`, `updateElementText`, `select`, `focusText`, `clearTextFocus`, `toggleDrawMode`, `remove`, `updateCanvasSize`, `addPage`, `switchToPage(at:)`, `removePage(at:)`).
 - Position is a **stored** property on `CanvasElement`, not derived — this is what makes "moving one block never affects another" trivially true.
 
 **Concurrency model**
@@ -123,7 +123,7 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 **Startup sequence (effectively):**
 
 1. iOS launches `MiroCloneApp.main`.
-2. `JournalView` is constructed; `@StateObject` creates `CanvasStore` (empty `elements`, default zoom, `drawMode = false`).
+  2. `JournalView` is constructed; `@StateObject` creates `CanvasStore` (empty `elements`, `drawMode = false`).
 3. `NavigationStack` + `GeometryReader` lay out. `FreeformCanvasView` appears, registers its canvas size on `onAppear`.
 4. Toolbar items are bound immediately; nothing is fetched because there is no remote data.
 
@@ -133,13 +133,12 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 
 - **Purpose:** Single source of truth for the entire journal screen.
 - **Responsibilities:**
-  - Hold `[Page]`, `currentPageIndex`, plus UI‑only state (`selectedElementID`, `focusedTextID`, `drawMode`, `canvasSize`, `zoomScale`, `zoomOffset`).
+  - Hold `[Page]`, `currentPageIndex`, plus UI‑only state (`selectedElementID`, `focusedTextID`, `drawMode`, `canvasSize`).
   - Expose `currentPage`, `elements`, and `scribble` as computed accessors so views keep reading `store.elements` / `store.scribble` instead of reaching into a specific page index. `scribble` has a custom setter that writes back to the current page.
   - Add text / image / audio elements (on the current page) with cascading default positions (`nextDefaultPosition`).
   - Manage pages: `addPage()`, `switchToPage(at:)`, `removePage(at:)`. The board always has at least one page; deleting the last one creates a fresh empty replacement. Switching pages clears `selectedElementID`/`focusedTextID`/`drawMode` because those don't carry across.
   - Persist image bytes to `Documents/Images/<UUID>.jpg` and audio bytes to `Documents/Audio/<UUID>.m4a`.
   - Move / resize / delete elements, with clamping against `canvasSize` and `DesignSystem.minBlockWidth/minBlockHeight`. Element lookup is currently scoped to the current page.
-  - Manage zoom clamping (`minZoomScale = 0.5`, `maxZoomScale = 4.0`) and zoom reset.
 - **Depends on:** `Page`, `DesignSystem` (shared), `UIKit` (for `UIImage`), `PencilKit` (for `PKDrawing`).
 - **Consumers:** `JournalView`, `FreeformCanvasView`, `ScribbleCanvasView`, `ElementContainerView`, `TextElementView`, `ImageElementView`, `AudioElementView`, `AudioRecorderSheet`, `PageStripView`.
 
@@ -158,11 +157,9 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 
 ### FreeformCanvasView (`Features/Journal/Canvas/FreeformCanvasView.swift`)
 
-- **Purpose:** The board surface. Hosts zoom/pan, the scribble layer, and the element layer.
+- **Purpose:** The board surface. Hosts the scribble layer and the element layer.
 - **Key behaviour:**
-  - Declares the `"canvas"` named coordinate space so child drag gestures get the already‑descaled coordinates from SwiftUI.
-  - Applies `scaleEffect` + `offset` *inside* the named coordinate space → gestures downstream do not need to know zoom exists.
-  - Pinch gesture uses focal‑point math to keep the pinched point visually anchored.
+  - Declares the `"canvas"` named coordinate space so child drag gestures (element drag, width/height handles) read coordinates directly from SwiftUI.
   - On `onAppear` / `onChange(of: size)` it reports the canvas size to `store.updateCanvasSize`.
 - **Layer order (bottom→top):** board background → `ScribbleCanvasView` (PencilKit) → element layer (only hit‑testable when `!drawMode`).
 
@@ -233,9 +230,9 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 | `App/MiroCloneApp.swift` | The single `@main` entry point. |
 | `Features/Journal/JournalView.swift` | Top screen; `VStack` of `FreeformCanvasView` + `PageStripView`; wires the toolbar (add text/image/audio, toggle Scribble), presents the audio sheet, handles `PhotosPicker` data → `store.addImage(data:)`. |
 | `Features/Journal/Models/Page.swift` | One page: owns its own elements + scribble layer. |
-| `Features/Journal/Models/CanvasStore.swift` | All state (pages + current page + UI state), all mutations, file I/O for images & audio, zoom state. The "brain". |
+| `Features/Journal/Models/CanvasStore.swift` | All state (pages + current page + UI state), all mutations, file I/O for images & audio. The "brain". |
 | `Features/Journal/Models/CanvasElement.swift` | The data shape; defines that `position` is stored (not derived). |
-| `Features/Journal/Canvas/FreeformCanvasView.swift` | Zoom/pan math + the named coordinate space contract that makes gesture math trivial downstream. |
+| `Features/Journal/Canvas/FreeformCanvasView.swift` | Named coordinate space contract + board layout. |
 | `Features/Journal/Canvas/ElementContainerView.swift` | All per‑block gestures (select, drag, resize, delete). Writes position back to the store on every drag tick. |
 | `Features/Journal/Canvas/ScribbleCanvasView.swift` | PencilKit + system `PKToolPicker` integration; swaps drawing on page change with one‑shot delegate suppression. |
 | `Features/Journal/Canvas/PageStripView.swift` | Horizontal page thumbnails + "+" button + delete (via context menu + confirmation dialog). |
@@ -280,15 +277,9 @@ ElementContainerView (gesture = DragGesture(coordinateSpace: .named("canvas")))
 ### Zoom / pan
 
 ```text
-MagnifyGesture (on FreeformCanvasView, OUTSIDE the scaled content)
-  └─ focal‑point math: anchor stays visually pinned
-        store.zoomScale   (clamped 0.5…4.0)
-        store.zoomOffset
-           ▼
-   board.scaleEffect(zoomScale, anchor: .topLeading)
-        .offset(zoomOffset)
-           ▼
-   Inner coordinateSpace(.named("canvas")) reports descaled coordinates to children
+(Zoom / pan was removed; the board renders at a fixed 1:1 scale. Element
+drag and width/height handles still read the `"canvas"` named coordinate
+space directly — no transform in between.)
 ```
 
 ### Editing text
@@ -356,14 +347,14 @@ Toggle off  ─► toolPicker hidden, PKCanvasView resigns first responder, inte
 1. **Position is the single source of truth for layout.** No derived positions, no reflow, no flow layout. `CanvasElement.position` is read for rendering, hit testing, and the drag gesture's write‑back. This is the explicit answer to the historical bug where moving a block affected other blocks.
 2. **Drag writes on every tick, not on commit.** The drag's `onChanged` calls `store.moveElement` with the current `start + translation`, so model / visual / hit‑test rectangle are always in lockstep — no temporary visual offset to reconcile on `onEnded`.
 3. **Cascading default placement for new blocks.** `nextDefaultPosition()` is a creation‑time convenience (`(inset + col*spacing, inset + row*spacing)`); once created, the element owns its position.
-4. **Zoom is purely a render transform.** Applied as `scaleEffect + offset` *inside* the `"canvas"` coordinate space; downstream gestures read the already‑descaled coordinates. Pinch math uses focal‑point preservation so the pinched point stays under the fingers.
+4. **The board renders at a fixed 1:1 scale.** There is no zoom or pan. Element drag, width/height handles, and PencilKit touches all read the `"canvas"` named coordinate space directly; nothing in between warps the frame.
 5. **Draw mode is exclusive.** Selecting any element exits Draw mode; toggling Draw mode clears selection and text focus. Elements are non‑interactive while Draw mode is on.
 6. **Text editing is opt‑in and isolated.** A text block is draggable when *not* focused, so caret/selection gestures always win during editing. Height is auto‑measured (`AutoGrowingTextView.sizeThatFits` + `recalculateHeight` → `store.setTextHeight`).
 7. **Scribble strokes live in their own layer.** `store.scribble: PKDrawing` is independent of `elements`; PencilKit is the source of truth while Draw mode is on, and the store mirrors its state via the delegate.
 8. **Block content lives in the Documents directory.** Image bytes are written directly into `Documents/Images/<UUID>.jpg`; audio is copied from a temp recording into `Documents/Audio/<UUID>.m4a`. The `CanvasElement` stores only the file name.
 9. **Min/max constraints.** Elements are clamped to `minBlockWidth × minBlockHeight` and to the canvas content rectangle on resize and drag.
 10. **Pages are independent sheets of state.** `pages[currentPageIndex]` is what every element + scribble mutation reads and writes; switching pages clears UI‑only state (selection, text focus, draw mode) because that state can't follow across. The board always has at least one page; deleting the only page inserts a fresh empty replacement. The `PKCanvasView`'s drawing is swapped in lock‑step with `currentPageIndex` change (with one‑shot delegate suppression so PencilKit doesn't echo the swap back into the store).
-11. **UI‑state vs page‑state split.** Pages own their `elements` and `scribble`; selection, text focus, draw mode, zoom and canvas size are global because they're tied to the user/UI, not the page.
+11. **UI‑state vs page‑state split.** Pages own their `elements` and `scribble`; selection, text focus, draw mode, and canvas size are global because they're tied to the user/UI, not the page.
 
 ## 10. API / Routes
 
@@ -380,7 +371,6 @@ Toggle off  ─► toolPicker hidden, PKCanvasView resigns first responder, inte
 | Move element           | drag → `store.moveElement(id, to:)`                                |
 | Resize element         | width/height handle drag → `store.setWidth` / `setHeight`          |
 | Auto‑resize text       | `AutoGrowingTextView` → `store.setTextHeight(id, height:)`         |
-| Pinch zoom             | `FreeformCanvasView.pinchGesture` → `store.zoomScale` / `zoomOffset` |
 | Delete element         | delete button → `store.remove(id)`                                  |
 | Add page               | `PageStripView` "+" → `store.addPage()`                              |
 | Switch page            | `PageStripView` thumbnail tap → `store.switchToPage(at:)`            |
@@ -471,7 +461,7 @@ These are patterns repeatedly used in the code that future work should follow:
 3. **Drag‑writes‑on‑every‑tick.** Gestures that change geometry should update the model on `onChanged`, not on `onEnded` (matches `ElementContainerView.moveGesture`). This keeps the visual frame, hit test, and model position identical at all times.
 4. **DesignSystem is the only place for sizing tokens.** Don't hardcode `cornerRadius`, `minBlockWidth`, padding, etc. in views.
 5. **UIViewRepresentable wrappers are the bridge, not the model.** `AutoGrowingTextView` and `ScribbleCanvasView` are intentionally thin; all state lives in `CanvasStore` and is mirrored via delegate callbacks.
-6. **SwiftUI `GeometryReader` + named coordinate space contract.** Drag gestures inside `FreeformCanvasView` use `.coordinateSpace(.named("canvas"))` and rely on the fact that the zoom transform sits *inside* that space. Don't move `scaleEffect` *outside* the board's coordinate‑space declaration or the math breaks.
+6. **SwiftUI `GeometryReader` + named coordinate space contract.** Drag gestures inside `FreeformCanvasView` use `.coordinateSpace(.named("canvas"))`. Don't add a `scaleEffect` / `offset` modifier that wraps the board — element drag math is written against a 1:1 frame.
 7. **Opt‑in editing for text blocks.** Anything that involves the caret / selection must check `isFocused` first so drag can take over otherwise.
 8. **File‑backed content, name in the model.** Heavy media lives in `Documents/Images` / `Documents/Audio`; the `CanvasElement` only stores a filename. Future media kinds should follow the same pattern.
 9. **Concurrency isolation.** Because `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, prefer keeping work on the main actor. The only off‑main work today is the `Task` around `PhotosPickerItem.loadTransferable`.
@@ -510,7 +500,7 @@ MiroCloneApp
    └── JournalView
          ├── CanvasStore                    (created here, passed down)
          ├── VStack
-         │     ├── FreeformCanvasView             ── reads/writes store.zoomScale, .zoomOffset, .canvasSize, .elements (current page)
+         │     ├── FreeformCanvasView             ── reads/writes store.canvasSize, .elements (current page)
          │     │     ├── ScribbleCanvasView       ── reads/writes store.scribble (current page), store.drawMode; boundPageID tracks current page
          │     │     └── ElementContainerView × N ── reads/writes store.selectedElementID, store.moveElement, .setWidth, .setHeight, .remove
          │     │           ├── TextElementView    ── store.updateElementText, store.setTextHeight, store.focusText, store.clearTextFocus
@@ -536,9 +526,9 @@ Notable: there is **one** store, injected top‑down from `JournalView`. No sing
 
 Read `MiroCloneApp` → it launches a `JournalView`. `JournalView` creates a `CanvasStore` (the brain) and a `NavigationStack` containing a `VStack { FreeformCanvasView; PageStripView }` plus a toolbar. The toolbar is the only way new content enters the current page: an Add‑Text button, a `PhotosPicker`, a Mic button (which presents `AudioRecorderSheet`), and a Scribble toggle. The page strip at the bottom of the screen is how the user switches pages or adds a new one (tap a thumbnail, or tap the trailing "+" button; long‑press / context menu on a thumbnail deletes it after a confirmation).
 
-The store holds a list of `Page`s and a `currentPageIndex`. Every `elements` / `scribble` read or write goes through the current page — views don't know which page is current, only the store does. UI‑only state (selection, text focus, draw mode, zoom, canvas size) is global because it follows the user, not the page; switching pages clears it. The board always has at least one page; deleting the only one inserts a fresh empty replacement.
+The store holds a list of `Page`s and a `currentPageIndex`. Every `elements` / `scribble` read or write goes through the current page — views don't know which page is current, only the store does. UI‑only state (selection, text focus, draw mode, canvas size) is global because it follows the user, not the page; switching pages clears it. The board always has at least one page; deleting the only one inserts a fresh empty replacement.
 
-Everything you can see or interact with on the current page is a `CanvasElement` — a struct with a position, a size, and an optional payload (text, image filename, or audio filename). The board is a `ZStack` of three layers: the background, a `PKCanvasView` for free‑form drawing, and one `ElementContainerView` per element. Zoom and pan are pure render transforms applied to the entire board; drag gestures inside the board use a named coordinate space that already reflects the descaled frame.
+Everything you can see or interact with on the current page is a `CanvasElement` — a struct with a position, a size, and an optional payload (text, image filename, or audio filename). The board is a `ZStack` of three layers: the background, a `PKCanvasView` for free‑form drawing, and one `ElementContainerView` per element. The board renders at a fixed 1:1 scale — there is no zoom or pan. Drag gestures inside the board use a named coordinate space to read SwiftUI's coordinate frame directly.
 
 The store owns geometry. The `ElementContainerView`'s drag gesture does not maintain a "visual offset" — it computes the new top‑left point on every frame and writes it straight to `store.moveElement(_:to:)`, so the model is always the truth and there is nothing to reconcile. Resize handles work the same way. Text editing is opt‑in: a double‑tap focuses a block, a `UITextView` becomes the first responder, every change bubbles a measured height back so the block's frame matches the actual text.
 
@@ -555,12 +545,12 @@ There is one screen, one store, no network, no database, no third‑party depend
 - All Swift source files in `MiroCloneiPad/` were read end‑to‑end (18 files: the 16 originals + `Page.swift` and `PageStripView.swift` added for multi‑page support).
 - All build settings were read from `project.pbxproj`.
 - App entry point is `MiroCloneApp` (`@main`, `WindowGroup { JournalView() }`).
-- `CanvasStore` is the single `ObservableObject` driving the entire UI; it holds `[Page]` plus UI‑only state (`selectedElementID`, `focusedTextID`, `drawMode`, `canvasSize`, `zoomScale`, `zoomOffset`).
+- `CanvasStore` is the single `ObservableObject` driving the entire UI; it holds `[Page]` plus UI‑only state (`selectedElementID`, `focusedTextID`, `drawMode`, `canvasSize`). Zoom state was removed.
 - `elements` and `scribble` on the store are computed accessors into `pages[currentPageIndex]` — verified by reading `CanvasStore.swift`.
 - Three element kinds: `.text`, `.image`, `.audio` (via `ElementKind` enum).
 - Multi‑page behavior: app starts with one empty page, `addPage()` appends, `removePage(at:)` removes (with confirmation) and falls back to an empty page if the last one is deleted, `switchToPage(at:)` clears selection/focus/draw mode.
 - Media persistence path: `Documents/Images/` and `Documents/Audio/` (`CanvasStore.imagesURL` / `audioURL`).
-- Zoom is applied inside the named `"canvas"` coordinate space; gestures downstream read descaled coordinates.
+- The board has no zoom; the `"canvas"` named coordinate space is declared on `FreeformCanvasView` and read by element drag + width/height handles.
 - `ScribbleCanvasView` swaps `PKCanvasView.drawing` when `currentPageIndex` changes, with a one‑shot delegate suppression to prevent the swap from echoing back into the store (verified by reading `ScribbleCanvasView.swift`).
 - `CanvasElement` is `Codable` but `CanvasStore.pages` is **not currently persisted** across launches — verified by absence of any JSON/Plist/SwiftData call in the codebase.
 - No test target, no third‑party dependencies (verified by repo file listing and `.pbxproj` inspection).
