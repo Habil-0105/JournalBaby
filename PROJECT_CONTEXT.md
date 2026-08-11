@@ -160,12 +160,11 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 - **Purpose:** Top‑level horizontal page navigator. Renders prev / current / next pages at a reduced size and handles swipe + tap navigation and add‑page UX.
 - **Key behaviour:**
   - Computes a scaled `pageSize` from the container: width is min(45% of container width, 70% of container height / 1.3), height = width × 1.3 (tall sheet‑of‑paper aspect). Reports this `pageSize` to `store.updateCanvasSize`.
-  - Lays out three slots — previous page, current page, next page (or "Add Page" area if `currentPageIndex == pages.count - 1`) — in a `ZStack`, offset by `(index - currentPageIndex) * spacing + dragOffset`.
-  - Neighboring pages (and the Add Page area) are offset downward by `pageSize.height * 0.08` to read as "behind" the centered current page.
-  - Each page is wrapped in a `VStack` with a dynamic page number underneath (`pageNumberLabel`).
-  - **Swipe gesture** (`DragGesture(minimumDistance: 20)`) tracks `dragOffset` live for visual feedback; on `onEnded`, if drag exceeds 25% of `spacing`, it `switchToPage(at: +1)`, `switchToPage(at: -1)`, or `addPage()` (when swiping past the last page). Swipes are ignored while `drawMode` is on.
+  - **Resting layout:** current page is centered (offset 0). Previous / next / Add Page slots are pushed down so only the top **20%** of each side page peeks above the container bottom — the current page dominates, side pages read as the top edge of a deck beneath it. Side pages are also slightly smaller (`scaleEffect(0.95)`) for a subtle deck‑of‑cards perspective.
+  - **Transitions are driven by `visualPageIndex: CGFloat`.** This is a fractional page index that drives rendering for every slot. At rest it equals `CGFloat(store.currentPageIndex)`; during a swipe it tracks the drag 1:1; on commit it springs to the new integer (with overshoot). Each slot at index `i` computes `delta = i - visualPageIndex`; that single value drives both horizontal offset (`delta * spacing`) and vertical offset (`|delta| * neighborVerticalOffset`, clamped to 1.0).
+  - **Swipe gesture** (`DragGesture(minimumDistance: 20)`) updates `visualPageIndex` from drag translation in `onChanged` (no animation, so the drag tracks the finger). In `onEnded`, if the drag crossed 25% of `spacing`, it commits by setting `store.currentPageIndex` (or `store.addPage()` when swiping into the Add Page slot). `onChange(of: store.currentPageIndex)` then animates `visualPageIndex` to the new value with a spring (`response: 0.32s`, `dampingFraction: 0.62` — fast, snappy, small overshoot, quick settle). If the drag didn't commit (under‑threshold release, out‑of‑bounds swipe, draw‑mode cancel), `springVisualToCurrent()` springs `visualPageIndex` back to `currentPageIndex` directly.
   - **Delete** is *not* part of this view — it's a pill on `PageContentView` (see below).
-- **Layer constants (private):** `pageWidthFraction = 0.45`, `pageAspectRatio = 1.3`, `maxPageHeightFraction = 0.7`, `spacingFactor = 1.15`, `swipeThreshold = 0.25`.
+- **Layer constants (private):** `pageWidthFraction = 0.45`, `pageAspectRatio = 1.3`, `maxPageHeightFraction = 0.7`, `spacingFactor = 1.15`, `swipeThreshold = 0.25`, `neighborVisibleFraction = 0.2`, `sidePageScale = 0.05`, `transitionResponse = 0.32`, `transitionDamping = 0.62`.
 
 ### PageContentView (`Features/Journal/Canvas/PageContentView.swift`)
 
@@ -288,21 +287,36 @@ ElementContainerView (gesture = DragGesture(coordinateSpace: .named("canvas")))
 ```text
 PageCarouselView swipe gesture
   ├─ onChanged (DragGesture, minimumDistance 20)
-  │       guard !drawMode; dragOffset = value.translation.width
-  │       ─► PageCarouselView re-renders, pages slide horizontally
+  │       guard !drawMode
+  │       visualPageIndex = CGFloat(store.currentPageIndex)
+  │                         + (-value.translation.width / spacing)
+  │       ─► every slot recomputes offset = delta * spacing,
+  │          y = |delta| * neighborVerticalOffset,
+  │          scale = 1 - 0.05 * |delta|
+  │       ─► pages visibly rise from their lower resting position
+  │          toward the center as the swipe progresses
   └─ onEnded
-          let threshold = spacing * 0.25
-          withAnimation(.spring)
-            if translation.width < -threshold:          // swipe left
-              if last page        → store.addPage()     (auto-creates next)
-              else                → store.switchToPage(at: currentPageIndex + 1)
-            elif translation.width > threshold:          // swipe right
-              if not first page   → store.switchToPage(at: currentPageIndex - 1)
-            dragOffset = 0
+          let direction: CGFloat = value.translation.width < 0 ? +1 : -1
+          let shouldCommit = abs(value.translation.width) > threshold (0.25 * spacing)
 
-Tapping a side page (non-current PageContentView):
-  ─► store.switchToPage(at: that index)
-  ─► previousPage/currentPage/trailingContent re-layout around the new index
+          if shouldCommit:
+            if proposedIndex in [0, pages.count) → store.currentPageIndex = proposedIndex
+            if proposedIndex == pages.count       → store.addPage()
+            if proposedIndex < 0                  → springVisualToCurrent()
+          else:
+            springVisualToCurrent()
+
+          springVisualToCurrent() = withAnimation(.spring(0.32, 0.62)):
+              visualPageIndex = CGFloat(store.currentPageIndex)
+
+store.currentPageIndex change:
+  ─► onChange(of: store.currentPageIndex):
+        if |delta| ≤ 1.5 → withAnimation(.spring(0.32, 0.62)): visualPageIndex = new
+        else             → visualPageIndex = new  (snap, e.g. after a delete-and-replace)
+
+Tapping a side page or pressing Add Page button:
+  ─► store.switchToPage(at: that index)  /  store.addPage()
+  ─► onChange of currentPageIndex animates visualPageIndex
 
 store.switchToPage(at:) sets:
   currentPageIndex = index
@@ -316,6 +330,8 @@ ScribbleCanvasView.updateUIView on currentPageIndex change
   ─► uiView.drawing = store.scribble            (swap the PencilKit drawing)
   ─► boundPageID = currentPageID
 ```
+
+The deck‑style feel comes from `|delta|` driving both the y offset and the scale at the same time: a page moving from slot 0 (deep right) toward slot 1 (center) interpolates linearly upward while the next‑page slot takes its place going down. The spring on commit adds a small overshoot (the new current briefly nudges past center and settles back).
 
 Note: elements stay in their own coordinate system because `PageContentView` declares the `"canvas"` coordinate space per‑page. Element positions are not reflowed when the page's size changes — they stay where the user placed them.
 
@@ -401,6 +417,7 @@ This means switching pages is just a layout update — no PKCanvasView is create
 11. **UI‑state vs page‑state split.** Pages own their `elements` and `scribble`; selection, text focus, draw mode, and canvas size are global because they're tied to the user/UI, not the page.
 12. **Page navigation is multi-modal.** A user can switch pages by (a) swiping horizontally on the carousel, (b) tapping a side page, (c) tapping the dashed "Add Page" card on the last position, or (d) swiping left past the last page (auto-creates the next). All paths go through `CanvasStore.switchToPage(at:)` or `CanvasStore.addPage()`.
 13. **Page deletion is destructive and immediate.** A red "Delete" pill sits at the top of the current page; tapping it calls `CanvasStore.removePage(at:)` directly with no confirmation. The store still guarantees "at least one page" via its existing fallback.
+14. **The carousel is a deck, not a horizontal scroll.** Side pages sit at a deep y offset such that only their top 20% peeks above the container bottom; current page is centered and slightly larger (`scale = 1.0` vs `0.95` for neighbors). A single `visualPageIndex: CGFloat` drives both horizontal and vertical offset, so a swipe makes pages visibly rise from their lower position toward center instead of sliding horizontally.
 
 ## 10. API / Routes
 
@@ -579,7 +596,7 @@ Notable: there is **one** store, injected top‑down from `JournalView`. No sing
 
 Read `MiroCloneApp` → it launches a `JournalView`. `JournalView` creates a `CanvasStore` (the brain) and a `NavigationStack` containing a `PageCarouselView` plus a toolbar. The toolbar is the only way new content enters the current page: an Add‑Text button, a `PhotosPicker`, a Mic button (which presents `AudioRecorderSheet`), and a Scribble toggle.
 
-The carousel is the entire board. Pages are rendered at paper‑like size (≈ 45% of container width), with the current page centered and the previous / next pages peeking in on each side at a slight vertical offset. A dynamic page number sits under each page. The rightmost slot, when on the last page, becomes a dashed "Add Page" card. The current page has a red "Delete" pill at the top. Navigation is by swipe, by tapping a side page, by tapping the Add Page card, or by swiping past the last page.
+The carousel is the entire board, modeled as a deck of pages. Pages are rendered at paper‑like size (≈ 45% of container width), with the current page centered and the previous / next pages pushed far below — only their top 20% peeks above the container bottom edge, reading as the top of a deck beneath the viewport. Side pages are also slightly smaller (`0.95×`) for a hint of perspective. A dynamic page number sits under each page. The rightmost slot, when on the last page, becomes a dashed "Add Page" card. The current page has a red "Delete" pill at the top. Navigation is by swipe, by tapping a side page, by tapping the Add Page card, or by swiping past the last page. Transitions are driven by a single fractional `visualPageIndex` that springs on commit, making the incoming page visibly rise from its lower side position into the center while the outgoing page falls into the side position — a deck‑of‑cards feel rather than a simple horizontal slide.
 
 Each `PageContentView` renders one page: a paper background, a scribble layer (interactive `PKCanvasView` for the current page, static `UIImage` snapshot for neighbors), and a `ForEach` of `ElementContainerView`s for each element. `PageContentView` owns its own `"canvas"` coordinate space, so element drag math is always in the page's own coordinate system.
 
@@ -617,7 +634,7 @@ There is one screen, one store, no network, no database, no third‑party depend
 - `INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDefault`, `XROS_DEPLOYMENT_TARGET = 26.5`, `MACOSX_DEPLOYMENT_TARGET = 26.5` are default Xcode template residues, not intentional platform expansion.
 - The app groups entitlement is enabled (`REGISTER_APP_GROUPS = YES`) but no app group identifier is used in code; it's speculative.
 - Each `AudioElementView` owning its own `AudioPlaybackManager` is an intentional per‑element decision rather than oversight, but the code does not document why.
-- The `pageAspectRatio = 1.3` and `pageWidthFraction = 0.45` in `PageCarouselView` are tuned for iPad; on iPhone the same constants would produce a different visual density — likely intentional (single design across device families).
+- The `pageAspectRatio = 1.3`, `pageWidthFraction = 0.45`, `neighborVisibleFraction = 0.2`, `sidePageScale = 0.05`, and the spring `response = 0.32, damping = 0.62` in `PageCarouselView` are tuned for iPad; on iPhone the same constants would produce a different visual density — likely intentional (single design across device families).
 
 ### Unknown
 
