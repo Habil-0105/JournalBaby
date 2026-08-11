@@ -113,12 +113,14 @@ final class CanvasStore: ObservableObject {
     /// across the layout change.
     func enterWritingMode() {
         guard !writingMode else { return }
-        writingMode = true
-        selectedElementID = nil
-        focusedTextID = nil
-        // Mirror what `drawMode` does for the toolbar — turning Scribble on
-        // also implies writing mode.
-        drawMode = true
+        withAnimation(DesignSystem.modeSwitchAnimation) {
+            writingMode = true
+            selectedElementID = nil
+            focusedTextID = nil
+            // Mirror what `drawMode` does for the toolbar — turning Scribble on
+            // also implies writing mode.
+            drawMode = true
+        }
     }
 
     /// Switch from writing mode back to carousel mode. Selection / focus
@@ -129,10 +131,12 @@ final class CanvasStore: ObservableObject {
     /// something else (like `addPage` → `switchToPage`) reset it.
     func exitWritingMode() {
         guard writingMode else { return }
-        writingMode = false
-        drawMode = false
-        selectedElementID = nil
-        focusedTextID = nil
+        withAnimation(DesignSystem.modeSwitchAnimation) {
+            writingMode = false
+            drawMode = false
+            selectedElementID = nil
+            focusedTextID = nil
+        }
     }
 
     // MARK: - Pages

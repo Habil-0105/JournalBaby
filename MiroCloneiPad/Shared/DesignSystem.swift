@@ -1,10 +1,16 @@
 import CoreGraphics
+import SwiftUI
 
 /// The "existing design system" every element and the canvas itself pull
 /// spacing/sizing from. Centralizing these is what keeps padding
 /// consistent as the layout evolves — change a value here, it applies
 /// everywhere at once.
 enum DesignSystem {
+    /// Spring used to animate the carousel ↔ writing mode switch. The
+    /// store flips `writingMode` inside `withAnimation` with this curve so
+    /// the `JournalView` mode-swap transitions always run.
+    static let modeSwitchAnimation = Animation.spring(response: 0.35, dampingFraction: 0.82)
+
     /// Gap between a block's edge and its own content (text, audio
     /// controls, etc). Images intentionally skip this and bleed
     /// edge-to-edge within their block.

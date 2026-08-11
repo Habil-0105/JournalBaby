@@ -17,8 +17,10 @@ struct JournalView: View {
             Group {
                 if store.writingMode {
                     WritingCanvasView(store: store)
+                        .transition(.scale(scale: 0.5).combined(with: .opacity))
                 } else {
                     PageCarouselView(store: store)
+                        .transition(.scale(scale: 0.5).combined(with: .opacity))
                 }
             }
             .navigationTitle("Journal")
