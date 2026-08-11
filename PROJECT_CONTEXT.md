@@ -251,7 +251,7 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 ### AudioElementView + AudioPlaybackManager (`Features/Journal/Elements/AudioElementView.swift`)
 
 - One play/pause button + duration label per audio block.
-- `AudioPlaybackManager` is a per‑view `StateObject`. It configures `AVAudioSession` to `.playback`, instantiates an `AVAudioPlayer`, toggles play/stop, and forwards `audioPlayerDidFinishPlaying` → `isPlaying = false`.
+- **Exactly one manager, shared across all audio blocks.** `CanvasStore` owns the single `AudioPlaybackManager` (`store.audioPlayer`). Each `AudioElementView` observes that same instance (`@ObservedObject`, wired in its init) and calls `player.toggle(url:for: element.id)`. `toggle` stops the currently playing clip *before* starting a new one, and the label shows the pause icon only for the element whose `id == player.elementID` — so only one audio ever produces sound, regardless of which element the user taps. Playback is also stopped on page switch, page delete, and when the playing element itself is removed. `AVAudioSession` is set to `.playback` only on the start path; `audioPlayerDidFinishPlaying` clears `isPlaying`/`elementID`.
 
 ### AudioRecorderSheet + AudioRecorderManager (`Features/Journal/Elements/AudioRecorderSheet.swift`)
 
@@ -280,7 +280,7 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 | `Features/Journal/Canvas/ScribbleCanvasView.swift` | PencilKit + system `PKToolPicker` integration; `lastAssignedDrawingData` echo‑skip; `PKCanvasView` zoom clamped to 1× so the SwiftUI `MagnifyGesture` in `WritingCanvasView` is unopposed. |
 | `Features/Journal/Elements/AutoGrowingTextView.swift` | Why text height matches content; opt‑in editing; the `sizeThatFits` override. |
 | `Features/Journal/Elements/AudioRecorderSheet.swift` | Microphone permission flow + `AVAudioRecorder` setup. |
-| `Features/Journal/Elements/AudioElementView.swift` | `AVAudioPlayer` + per‑view playback manager. |
+| `Features/Journal/Elements/AudioElementView.swift` | `AVAudioPlayer` UI; hosts the shared store-owned `AudioPlaybackManager` (single-instance playback). |
 | `Shared/DesignSystem.swift` | All sizing/padding tokens. |
 | `MiroCloneiPad.xcodeproj/project.pbxproj` | Build settings (iOS 17.6, Swift 5, sandbox on, hardened runtime on, mic + photos usage descriptions, app groups registered). |
 
@@ -436,11 +436,16 @@ Double‑tap on text block
 ### Audio playback
 
 ```text
-AudioElementView "play" button
-  ─► AudioPlaybackManager.toggle(url:)   ─► AVAudioSession(.playback)
-                                          ─► AVAudioPlayer(contentsOf:)
-                                          ─► isPlaying = true
-        ─► audioPlayerDidFinishPlaying ─► isPlaying = false
+AudioElementView (any block) "play" button
+  ─► store.audioPlayer.toggle(url:for: element.id)   ─► one shared manager
+        ├─ same clip already playing?     ─► stop()  (paused)
+        └─ any other clip (or stopped)    ─► stop current player (if any)
+                                            ─► AVAudioSession(.playback)
+                                            ─► AVAudioPlayer(contentsOf:)
+                                            ─► isPlaying = true, elementID = id
+        ─► audioPlayerDidFinishPlaying ─► isPlaying = false, elementID = nil
+        ─► only the block whose id == player.elementID shows a pause icon
+        (switchToPage / removePage / remove(playing element) also call stop())
 ```
 
 ### Pencil / Scribble
@@ -550,7 +555,7 @@ None. No login, no account, no token, no permission gate beyond the OS‑level p
 |-------------|---------|-------|------------------|
 | Apple Photos (via `PhotosPicker`) | Source of image bytes for new image blocks | `JournalView` toolbar | If load fails, the picker is silently dismissed; `store.addImage(data:)` is never called. |
 | PencilKit (`PKCanvasView`, `PKToolPicker`, `PKDrawing`) | Free‑form drawing layer, system tool palette | `ScribbleCanvasView` (inside current `PageContentView`) | Wrapped in `UIViewRepresentable`; if PencilKit unavailable on the OS version this would crash — but iOS 17.6+ guarantees it. |
-| AVFoundation (`AVAudioRecorder`, `AVAudioPlayer`) | Audio capture & playback | `AudioRecorderManager`, `AudioPlaybackManager` | Errors logged via `print("Recording error: …")` / `print("Playback error: …")`. No user‑facing error UI besides "Microphone access is disabled. Enable it in Settings…". |
+| AVFoundation (`AVAudioRecorder`, `AVAudioPlayer`) | Audio capture & playback | `AudioRecorderManager`, `AudioPlaybackManager` (single instance on `CanvasStore`) | Errors logged via `print("Recording error: …")` / `print("Playback error: …")`. No user‑facing error UI besides "Microphone access is disabled. Enable it in Settings…". |
 
 No third‑party SDKs. No network. No analytics. No crash reporting.
 
@@ -632,7 +637,7 @@ These are patterns repeatedly used in the code that future work should follow:
 - **Page deletion is destructive with no confirmation.** The red "Delete" pill on the current page calls `store.requestDeletePage(at:)` which (after the exit animation completes) eventually calls `store.removePage(at:)` directly — a single tap removes a page (and all its elements). The exit animation runs automatically; there's no chance to cancel mid-flight.
 - **Logging is `print`-based** (`print("Failed to save image: …")`, `print("Recording error: …")`, `print("Playback error: …")`). No structured logging, no OSLog.
 - **No localization infrastructure in place.** Strings are inline English literals; `STRING_CATALOG_GENERATE_SYMBOLS = YES` is set but no `.xcstrings` catalog is present yet.
-- **`AudioPlaybackManager` per element.** Each `AudioElementView` creates its own `AudioPlaybackManager`. There's no shared audio session coordinator — playing two audio blocks simultaneously will both set the session to `.playback` and both play at once. The intent is unclear.
+- **Audio playback is single-instance, not session-coordinated beyond that.** `store.audioPlayer` guarantees exactly one clip plays at a time (start stops the previous), but there's no shared audio-session coordinator or fade/ducking strategy; the `.playback` session is (re)activated on each start. Fine for the product, not a general CA/audio UX layer.
 - **Neighboring pages re-render their static scribble image on every render.** `PageContentView.staticScribbleImage` calls `page.scribble.image(from:scale:)` per body evaluation. PencilKit's `PKDrawing.image(from:scale:)` is not free; on a 5‑page board this fires 4× per SwiftUI invalidation.
 
 ### Resolved
@@ -669,7 +674,7 @@ MiroCloneApp
          │           │     ├── TextElementView    ── store.updateElementText, store.setTextHeight, store.focusText, store.clearTextFocus
          │           │     │     └── AutoGrowingTextView  (UIViewRepresentable)
          │           │     ├── ImageElementView   ── reads store.imagesURL
-         │           │     └── AudioElementView   ── reads store.audioURL + own AudioPlaybackManager (AVFoundation)
+         │           │     └── AudioElementView   ── uses store.audioPlayer (single shared AudioPlaybackManager, single-instance playback)
          │           └── deleteButton            ── store.requestDeletePage(at: pageIndex) (animated)
          ├── PhotosPicker (PhotosUI)        ── on selection: store.addImage(data:)
          └── AudioRecorderSheet              ── on stop: store.addAudio(fileURL:duration:)
@@ -733,7 +738,7 @@ There is one screen, one store, no network, no database, no third‑party depend
 
 - `INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDefault`, `XROS_DEPLOYMENT_TARGET = 26.5`, `MACOSX_DEPLOYMENT_TARGET = 26.5` are default Xcode template residues, not intentional platform expansion.
 - The app groups entitlement is enabled (`REGISTER_APP_GROUPS = YES`) but no app group identifier is used in code; it's speculative.
-- Each `AudioElementView` owning its own `AudioPlaybackManager` is an intentional per‑element decision rather than oversight, but the code does not document why.
+- Each `AudioElementView` uses the single `store.audioPlayer`; the "one instance, one clip at a time" decision is deliberate (only the active block shows pause), and the manager lives on the store rather than per view.
 - The `pageAspectRatio = 1.3`, the carousel slot fractions in `DesignSystem.carouselSlotSize` (`0.45 × W`, `0.7 × H`), `neighborVisibleFraction = 0.2`, `sidePageScale = 0.05`, and the spring `response = 0.32, damping = 0.62` in `PageCarouselView` are tuned for iPad; on iPhone the same constants would produce a different visual density — likely intentional (single design across device families). The canonical `/` writing canvas fractions (`0.85 × W`, `0.75 × H`) are likewise container‑relative, so rotating the device changes the coordinate bounds.
 
 ### Unknown

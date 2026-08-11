@@ -67,6 +67,11 @@ final class CanvasStore: ObservableObject {
     /// Used to clamp drags and default placement inside the board.
     @Published private(set) var canvasSize: CGSize = .zero
 
+    /// The ONE shared audio playback manager. Every `AudioElementView`
+    /// drives this instance, which is what enforces the "only one audio at
+    /// a time" rule — starting any clip stops whatever was playing.
+    let audioPlayer = AudioPlaybackManager()
+
     func updateCanvasSize(_ size: CGSize) {
         guard size.width > 0, size.height > 0, size != canvasSize else { return }
         canvasSize = size
@@ -167,6 +172,8 @@ final class CanvasStore: ObservableObject {
     /// is cleared because it can't apply across pages.
     func switchToPage(at index: Int) {
         guard pages.indices.contains(index) else { return }
+        // The playing clip belongs to a page that may now be hidden — stop it.
+        audioPlayer.stop()
         currentPageIndex = index
         selectedElementID = nil
         focusedTextID = nil
@@ -179,6 +186,7 @@ final class CanvasStore: ObservableObject {
     /// at least one page to draw on.
     func removePage(at index: Int) {
         guard pages.indices.contains(index) else { return }
+        audioPlayer.stop()
         pages.remove(at: index)
         if pages.isEmpty {
             pages = [Page()]
@@ -423,6 +431,7 @@ final class CanvasStore: ObservableObject {
 
     func remove(_ id: UUID) {
         guard let idx = pageAndElementIndex(for: id) else { return }
+        if audioPlayer.elementID == id { audioPlayer.stop() }
         pages[idx.page].elements.remove(at: idx.element)
         if selectedElementID == id { selectedElementID = nil }
         if focusedTextID == id { focusedTextID = nil }
