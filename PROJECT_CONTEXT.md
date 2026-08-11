@@ -206,7 +206,9 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
   - Element layer: `ForEach(page.elements)` renders each `ElementContainerView` at `element.position`. Hit‑testing is gated by `.allowsHitTesting(isCurrent && store.writingMode)` — neighbouring pages are never interactive, **and in carousel mode (`!writingMode`) elements are non-interactive even on the current page**. In writing mode the current page's elements become fully interactive (tap, double-tap, drag, resize handles, delete button). This is the single source of truth for the mode boundary: writing mode = elements live, carousel mode = elements inert.
   - Owns the `"canvas"` coordinate space for its own bounds, so element drag/resize/PencilKit gestures read coordinates already in the page's own coordinate system.
   - **Delete pill:** red "Delete" `Capsule` button at the top of the current page; only shown when `!store.writingMode`. Tap → `store.requestDeletePage(at: pageIndex)` (which kicks off the animated delete — see §8). No confirmation dialog — destructive and immediate.
-  - Tap on the page background (when current + not drawing + carousel mode) → `store.select(nil)`.
+  - **Tap handling:**
+    - Non‑current page (a neighboring "paper", carousel mode only) → `store.switchToPage(at: pageIndex)` — the same "tap the paper" navigation as the Add Page card.
+    - Current page background (carousel mode, not drawing) → `store.select(nil)`.
 
 ### ElementContainerView (`Features/Journal/Canvas/ElementContainerView.swift`)
 
