@@ -194,6 +194,7 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
   - Delete pill is hidden (gated on `!store.writingMode` in `PageContentView`) so the writing canvas isn't cluttered.
   - **Pinch-out to exit** (`MagnifyGesture`): `MagnifyGesture.magnification` is the scale factor between fingers — fingers **closing** (the natural "zoom out" gesture) drives magnification below 1; when it drops below `exitPinchThreshold = 0.7`, `store.exitWritingMode()` is called. The view is destroyed and `JournalView` swaps back to `PageCarouselView`.
   - Reports `pageSize` to `store.updateCanvasSize` so element drag/resize clamps match the canonical canvas regardless of which mode last reported it.
+  - **Keyboard handling keeps the paper fixed-size.** The whole surface is `.ignoresSafeArea(.keyboard)`, so the keyboard never resizes the container and the paper never shrinks (previously the keyboard shrank the proposal → `writingCanvasSize` recomputed smaller → the paper visually shrank while the absolute-positioned text element didn't move). Instead the keyboard height (tracked via `keyboardWillShow`/`keyboardWillHide`) drives a `viewportOffset`: the paper is `.offset(y: -viewportOffset)` by just enough to keep the focused text element's bottom `keyboardMargin = 12pt` above the keyboard top; the offset is 0 (paper re-centers) when the keyboard hides or the focused element is already clear. Animated with `.easeOut(0.25)` on keyboard transitions.
 
 ### PageContentView (`Features/Journal/Canvas/PageContentView.swift`)
 
