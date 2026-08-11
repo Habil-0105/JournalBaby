@@ -27,4 +27,35 @@ enum DesignSystem {
     static let defaultTextWidth: CGFloat = 360
     static let defaultImageWidth: CGFloat = 320
     static let defaultAudioWidth: CGFloat = 280
+
+    /// Height-to-width ratio of a page (tall sheet of paper). Shared by
+    /// every paper geometry so pages keep the same shape at any size.
+    static let pageAspectRatio: CGFloat = 1.3
+
+    /// The **canonical content coordinate space** of a page. This is the
+    /// paper size used in writing mode — the largest, native-resolution
+    /// rendering. The carousel renders the same content at this size and
+    /// scales it down to each deck slot, so both modes show the identical
+    /// region of the board. `CanvasStore.canvasSize` (used for element
+    /// clamps) is always this value, never the carousel's smaller slot
+    /// size — otherwise content authored against the bigger writing paper
+    /// would fall outside the smaller carousel paper and get clipped.
+    static func writingCanvasSize(for container: CGSize) -> CGSize {
+        let width = min(
+            container.width * 0.85,
+            container.height * 0.75 / pageAspectRatio
+        )
+        return CGSize(width: width, height: width * pageAspectRatio)
+    }
+
+    /// The on-screen display size of a page in the carousel deck
+    /// (smaller than the canonical canvas, which is why the carousel
+    /// downscales the content to fit). Used for layout/spacing math only.
+    static func carouselSlotSize(for container: CGSize) -> CGSize {
+        let width = min(
+            container.width * 0.45,
+            container.height * 0.7 / pageAspectRatio
+        )
+        return CGSize(width: width, height: width * pageAspectRatio)
+    }
 }

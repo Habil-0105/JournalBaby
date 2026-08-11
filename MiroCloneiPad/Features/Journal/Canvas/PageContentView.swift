@@ -13,6 +13,13 @@ struct PageContentView: View {
     let isCurrent: Bool
     let pageSize: CGSize
 
+    /// Uniform scale applied to this content by its host (the carousel
+    /// renders the canonical writing-sized content scaled down to a deck
+    /// slot). Defaults to 1 (writing mode renders 1:1). The delete pill is
+    /// counter-scaled by `1/contentScale` so it stays readable inside a
+    /// downscaled paper.
+    var contentScale: CGFloat = 1
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: DesignSystem.cornerRadius)
@@ -29,6 +36,7 @@ struct PageContentView: View {
 
             if isCurrent && !store.writingMode {
                 deleteButton
+                    .scaleEffect(1 / max(contentScale, 0.001))
             }
         }
         .frame(width: pageSize.width, height: pageSize.height)

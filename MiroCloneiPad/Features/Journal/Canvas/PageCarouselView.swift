@@ -39,12 +39,6 @@ struct PageCarouselView: View {
     /// time so it doesn't drift if `visualPageIndex` keeps moving.
     @State private var exitDirection: CGFloat = 0
 
-    /// Fraction of the container width a single page occupies.
-    private let pageWidthFraction: CGFloat = 0.45
-    /// Height-to-width ratio of a page (tall sheet of paper).
-    private let pageAspectRatio: CGFloat = 1.3
-    /// Max fraction of the container height a page may occupy.
-    private let maxPageHeightFraction: CGFloat = 0.7
     /// Gap between adjacent page centers, relative to page width. Keeps a
     /// neighbor visible at roughly half its width with a small gap.
     private let spacingFactor: CGFloat = 1.15
@@ -69,7 +63,8 @@ struct PageCarouselView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let pageSize = scaledPageSize(for: geo.size)
+            let pageSize = DesignSystem.carouselSlotSize(for: geo.size)
+            let logicalSize = DesignSystem.writingCanvasSize(for: geo.size)
             let spacing = pageSize.width * spacingFactor
 
             ZStack {
@@ -77,6 +72,7 @@ struct PageCarouselView: View {
                     slotView(
                         slotIndex: slotIndex,
                         pageSize: pageSize,
+                        logicalSize: logicalSize,
                         spacing: spacing,
                         containerHeight: geo.size.height
                     )
@@ -86,12 +82,14 @@ struct PageCarouselView: View {
                     risingReplacementView(
                         ghost: ghost,
                         pageSize: pageSize,
+                        logicalSize: logicalSize,
                         spacing: spacing,
                         containerHeight: geo.size.height
                     )
                     exitGhostView(
                         ghost: ghost,
                         pageSize: pageSize,
+                        logicalSize: logicalSize,
                         spacing: spacing,
                         containerHeight: geo.size.height
                     )
@@ -104,9 +102,12 @@ struct PageCarouselView: View {
             .simultaneousGesture(pinchInToEnterWriting)
             .onAppear {
                 visualPageIndex = CGFloat(store.currentPageIndex)
-                store.updateCanvasSize(pageSize)
+                // Report the canonical canvas size (NOT the downscaled slot
+                // size), so element clamps in writing mode match the writing
+                // paper regardless of which surface reported last.
+                store.updateCanvasSize(logicalSize)
             }
-            .onChange(of: pageSize) { _, newSize in
+            .onChange(of: logicalSize) { _, newSize in
                 store.updateCanvasSize(newSize)
             }
             .onChange(of: store.currentPageIndex) { oldValue, newValue in
@@ -133,15 +134,6 @@ struct PageCarouselView: View {
 
     // MARK: - Layout
 
-    /// The zoomed-out page size: about half the container width, capped so
-    /// the page (plus its page-number label) always fits the height.
-    private func scaledPageSize(for container: CGSize) -> CGSize {
-        let widthFromRatio = container.width * pageWidthFraction
-        let widthFromHeight = container.height * maxPageHeightFraction / pageAspectRatio
-        let width = min(widthFromRatio, widthFromHeight)
-        return CGSize(width: width, height: width * pageAspectRatio)
-    }
-
     /// Vertical offset for a page with the given |delta| from the visual
     /// current. Side pages sit at `neighborVerticalOffset`; the current
     /// page sits at 0. Pages with |delta| > 1 are clamped to the same deep
@@ -166,21 +158,27 @@ struct PageCarouselView: View {
     private func slotView(
         slotIndex: Int,
         pageSize: CGSize,
+        logicalSize: CGSize,
         spacing: CGFloat,
         containerHeight: CGFloat
     ) -> some View {
         let delta = CGFloat(slotIndex) - visualPageIndex
         let absDelta = min(abs(delta), 1.0)
 
-        slotContent(slotIndex: slotIndex, pageSize: pageSize, delta: delta)
-            .offset(
-                x: delta * spacing,
-                y: absDelta * neighborVerticalOffset(
-                    containerHeight: containerHeight,
-                    pageSize: pageSize
-                )
+        slotContent(
+            slotIndex: slotIndex,
+            pageSize: pageSize,
+            logicalSize: logicalSize,
+            delta: delta
+        )
+        .offset(
+            x: delta * spacing,
+            y: absDelta * neighborVerticalOffset(
+                containerHeight: containerHeight,
+                pageSize: pageSize
             )
-            .scaleEffect(1 - sidePageScale * absDelta)
+        )
+        .scaleEffect(1 - sidePageScale * absDelta)
     }
 
     /// Picks what to render in a given slot — a real page, the Add Page
@@ -189,7 +187,7 @@ struct PageCarouselView: View {
     /// the ghost / rising replacement overlays don't double up with the
     /// regular slot rendering.
     @ViewBuilder
-    private func slotContent(slotIndex: Int, pageSize: CGSize, delta: CGFloat) -> some View {
+    private func slotContent(slotIndex: Int, pageSize: CGSize, logicalSize: CGSize, delta: CGFloat) -> some View {
         if hiddenSlotIndices.contains(slotIndex) {
             EmptyView()
         } else if slotIndex >= 0 && slotIndex < store.pages.count {
@@ -198,25 +196,58 @@ struct PageCarouselView: View {
                 page: store.pages[slotIndex],
                 pageIndex: slotIndex,
                 isCurrent: isCurrent,
-                pageSize: pageSize
+                logicalSize: logicalSize,
+                slotSize: pageSize
             )
         } else if slotIndex == store.pages.count {
             addPageArea(pageSize: pageSize)
         }
     }
 
-    /// A page plus its dynamic page-number label underneath.
-    private func pageStack(page: Page, pageIndex: Int, isCurrent: Bool, pageSize: CGSize) -> some View {
+    /// A page plus its dynamic page-number label underneath. The page
+    /// content is rendered at the canonical (writing) size and scaled
+    /// down to the deck slot so the carousel shows exactly the same region
+    /// of the board as writing mode.
+    private func pageStack(
+        page: Page,
+        pageIndex: Int,
+        isCurrent: Bool,
+        logicalSize: CGSize,
+        slotSize: CGSize
+    ) -> some View {
         VStack(spacing: 10) {
-            PageContentView(
-                store: store,
+            scaledPage(
                 page: page,
                 pageIndex: pageIndex,
                 isCurrent: isCurrent,
-                pageSize: pageSize
+                logicalSize: logicalSize,
+                slotSize: slotSize
             )
             pageNumberLabel(pageIndex: pageIndex, isCurrent: isCurrent)
         }
+    }
+
+    /// Renders one page's content in the canonical coordinate space,
+    /// uniformly scaled to fit the deck slot. Both dimensions scale by
+    /// the same factor because every paper uses the same aspect ratio.
+    private func scaledPage(
+        page: Page,
+        pageIndex: Int,
+        isCurrent: Bool,
+        logicalSize: CGSize,
+        slotSize: CGSize
+    ) -> some View {
+        let scale = slotSize.width / logicalSize.width
+        return PageContentView(
+            store: store,
+            page: page,
+            pageIndex: pageIndex,
+            isCurrent: isCurrent,
+            pageSize: logicalSize,
+            contentScale: scale
+        )
+        .scaleEffect(scale)
+        .frame(width: slotSize.width, height: slotSize.height)
     }
 
     private func pageNumberLabel(pageIndex: Int, isCurrent: Bool) -> some View {
@@ -461,6 +492,7 @@ struct PageCarouselView: View {
     private func exitGhostView(
         ghost: CanvasStore.PendingDeletion,
         pageSize: CGSize,
+        logicalSize: CGSize,
         spacing: CGFloat,
         containerHeight: CGFloat
     ) -> some View {
@@ -483,7 +515,8 @@ struct PageCarouselView: View {
             page: ghost.page,
             pageIndex: ghost.originalIndex,
             isCurrent: false,
-            pageSize: pageSize
+            logicalSize: logicalSize,
+            slotSize: pageSize
         )
         .offset(x: exitX, y: exitY)
         .scaleEffect(max(exitScale, 0.01))
@@ -500,6 +533,7 @@ struct PageCarouselView: View {
     private func risingReplacementView(
         ghost: CanvasStore.PendingDeletion,
         pageSize: CGSize,
+        logicalSize: CGSize,
         spacing: CGFloat,
         containerHeight: CGFloat
     ) -> some View {
@@ -522,12 +556,12 @@ struct PageCarouselView: View {
             )
             let scale = max(1 - sidePageScale * absDelta, 0.01)
 
-            PageContentView(
-                store: store,
+            scaledPage(
                 page: page,
                 pageIndex: ghost.replacementIndex,
                 isCurrent: false,
-                pageSize: pageSize
+                logicalSize: logicalSize,
+                slotSize: pageSize
             )
             .offset(x: x, y: y)
             .scaleEffect(scale)

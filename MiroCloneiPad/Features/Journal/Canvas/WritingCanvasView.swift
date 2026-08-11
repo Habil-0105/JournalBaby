@@ -14,15 +14,6 @@ import PencilKit
 struct WritingCanvasView: View {
     @ObservedObject var store: CanvasStore
 
-    /// Fraction of container width the writing page aims for.
-    private let pageWidthFraction: CGFloat = 0.85
-    /// Fraction of container height the writing page aims for.
-    private let maxPageHeightFraction: CGFloat = 0.75
-    /// Height-to-width ratio of a page (tall sheet of paper). Kept in
-    /// sync with the carousel's `pageAspectRatio` so pages have the same
-    /// shape at both sizes.
-    private let pageAspectRatio: CGFloat = 1.3
-
     /// Pinch magnification that flips the user back to carousel mode. A
     /// value **below** 1 means fingers are pinching together — the natural
     /// "zoom out" gesture that pulls the user out of the writing canvas
@@ -32,7 +23,7 @@ struct WritingCanvasView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let pageSize = writingPageSize(for: geo.size)
+            let pageSize = DesignSystem.writingCanvasSize(for: geo.size)
 
             ZStack {
                 Color(.systemGroupedBackground).ignoresSafeArea()
@@ -56,16 +47,6 @@ struct WritingCanvasView: View {
                 store.updateCanvasSize(newSize)
             }
         }
-    }
-
-    /// The writing-mode page size: significantly larger than the carousel
-    /// size (which uses `0.45 × W`), still with margins on every side so
-    /// the page doesn't fill the screen edge-to-edge.
-    private func writingPageSize(for container: CGSize) -> CGSize {
-        let widthFromRatio = container.width * pageWidthFraction
-        let widthFromHeight = container.height * maxPageHeightFraction / pageAspectRatio
-        let width = min(widthFromRatio, widthFromHeight)
-        return CGSize(width: width, height: width * pageAspectRatio)
     }
 
     private var pinchOutToExit: some Gesture {
