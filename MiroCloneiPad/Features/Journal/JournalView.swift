@@ -1,8 +1,8 @@
 import SwiftUI
 import PhotosUI
 
-/// Root screen of the Journal feature: hosts the freeform canvas and the
-/// toolbar that adds text / image / audio blocks or toggles Scribble mode.
+/// Root screen of the Journal feature: hosts the horizontal page carousel
+/// and the toolbar that adds text / image / audio blocks or toggles Scribble mode.
 struct JournalView: View {
     @StateObject private var store = CanvasStore()
     @State private var photosPickerItem: PhotosPickerItem?
@@ -10,16 +10,10 @@ struct JournalView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                GeometryReader { geo in
-                    FreeformCanvasView(store: store, size: geo.size)
-                        .background(Color(.systemGroupedBackground))
-                }
-                PageStripView(store: store)
-            }
-            .navigationTitle("Journal")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
+            PageCarouselView(store: store)
+                .navigationTitle("Journal")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     Button {
                         store.addText()

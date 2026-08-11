@@ -6,14 +6,15 @@
 
 The product surface is intentionally minimal:
 
-- One infinite‑feeling board (`FreeformCanvasView`) where the user places and arranges discrete blocks.
-- Multiple **pages** (`PageStripView`): horizontal strip of page thumbnails at the bottom of the screen with a trailing "+" button to add a new page; the app always starts with one empty page and keeps at least one.
+- A **horizontal page carousel** (`PageCarouselView`) — pages are rendered at a reduced, paper‑like size, with the previous and next page peeking in on each side and a dynamic page number under each. The rightmost slot, when on the last page, becomes a dashed "Add Page" card.
+- Each page is a freeform canvas (`PageContentView`) where the user places and arranges discrete blocks.
 - Three block kinds: **text** (auto‑growing notes), **image** (from the Photos library), **audio** (microphone recordings).
 - A **Scribble / Draw mode** that drops the user into Apple PencilKit's native `PKCanvasView` with the system `PKToolPicker`, identical to what Notes and Freeform ship.
+- Page navigation is by **swipe** (DragGesture), by tapping a side page, by tapping the dashed "Add Page" card, or by tapping the red "Delete" pill on the current page.
 
-Each block owns its own position (top‑left) and size on the board. There is no flow layout, no paging, no reflow — moving, adding or deleting a block never affects another block's placement. This is the deliberate design pivot from earlier git history (an earlier "pages" / 2‑page / 3D‑switch design was removed in commits `b87737e`, `d3ecd86`, `99ff378` and re‑introduced as a flatter multi‑page model — see §6/§11).
+Each block owns its own position (top‑left) and size on its page. There is no flow layout, no paging, no reflow — moving, adding or deleting a block never affects another block's placement. This is the deliberate design pivot from earlier git history (an earlier "pages" / 2‑page / 3D‑switch design was removed in commits `b87737e`, `d3ecd86`, `99ff378` and re‑introduced as a flatter multi‑page model — see §6/§11).
 
-**Current state:** Working iOS app, builds in Xcode 26.6, targeted at iOS 17.6+, Swift 5, supports iPhone and iPad (`TARGETED_DEVICE_FAMILY = "1,2"`). It is in active development but already feature‑complete for the three block kinds + Scribble. (Pinch‑to‑zoom was removed — see §18.)
+**Current state:** Working iOS app, builds in Xcode 26.6, targeted at iOS 17.6+, Swift 5, supports iPhone and iPad (`TARGETED_DEVICE_FAMILY = "1,2"`). It is in active development but already feature‑complete for the three block kinds + Scribble + multi‑page carousel. (Pinch‑to‑zoom was removed in a prior commit — see §18.)
 
 ## 2. Technology Stack
 
@@ -45,16 +46,16 @@ Each block owns its own position (top‑left) and size on the board. There is no
 │   │   └── MiroCloneApp.swift       @main App entry; launches JournalView
 │   ├── Features/
 │   │   └── Journal/                 The only feature module
-│   │       ├── JournalView.swift    Top‑level screen + toolbar + page strip
+│   │       ├── JournalView.swift    Top‑level screen + toolbar; embeds PageCarouselView
 │   │       ├── Models/
 │   │       │   ├── Page.swift              One page: id + elements + scribble
-│   │       │   ├── CanvasElement.swift   Codable struct for one block
-│   │       │   └── CanvasStore.swift     ObservableObject — single source of truth
+│   │       │   ├── CanvasElement.swift     Codable struct for one block
+│   │       │   └── CanvasStore.swift       ObservableObject — single source of truth
 │   │       ├── Canvas/
-│   │       │   ├── FreeformCanvasView.swift   Board container, element layout
+│   │       │   ├── PageCarouselView.swift     Horizontal page carousel + swipe nav + add
+│   │       │   ├── PageContentView.swift      One page's surface (current = interactive, neighbors = static preview)
 │   │       │   ├── ElementContainerView.swift Per‑block chrome: selection, drag, resize handles
-│   │       │   ├── ScribbleCanvasView.swift   UIViewRepresentable wrapping PKCanvasView
-│   │       │   └── PageStripView.swift        Horizontal page thumbnails + "+"
+│   │       │   └── ScribbleCanvasView.swift   UIViewRepresentable wrapping PKCanvasView (current page only)
 │   │       └── Elements/
 │   │           ├── TextElementView.swift      SwiftUI host for AutoGrowingTextView
 │   │           ├── AutoGrowingTextView.swift  UIViewRepresentable wrapping UITextView
@@ -70,7 +71,7 @@ Each block owns its own position (top‑left) and size on the board. There is no
 ### Directory responsibilities
 
 - **`App/`** — Application bootstrap only.
-- **`Features/Journal/`** — All product behavior lives here. Split into `Models/` (data + store), `Canvas/` (the board itself), `Elements/` (the three block kinds). The split keeps each layer addressable.
+- **`Features/Journal/`** — All product behavior lives here. Split into `Models/` (data + store), `Canvas/` (the page navigation + board surfaces), `Elements/` (the three block kinds). The split keeps each layer addressable.
 - **`Shared/`** — Cross‑feature tokens. Currently just `DesignSystem`. Designed so future features (e.g. multiple boards, settings) can pull from the same source of constants.
 - **`Assets.xcassets/`** — `AppIcon` and `AccentColor` slots are empty placeholders generated by Xcode; no custom images shipped.
 
@@ -78,15 +79,14 @@ Each block owns its own position (top‑left) and size on the board. There is no
 
 The app is a thin, single‑layer SwiftUI app with one global `ObservableObject` driving the whole UI.
 
-```
+```text
 MiroCloneApp (@main)
    └─► JournalView            (top‑level SwiftUI screen, owns CanvasStore)
-         ├─► VStack
-         │     ├─► FreeformCanvasView   (the board surface, scoped to currentPage)
-         │     │     ├─► ScribbleCanvasView (PKCanvasView, only when drawMode; swaps drawing on page change)
-         │     │     └─► ElementContainerView × N (one per CanvasElement on currentPage)
-         │     │           └─► TextElementView | ImageElementView | AudioElementView
-         │     └─► PageStripView      (horizontal page thumbnails + add button)
+         ├─► PageCarouselView        (horizontal page carousel; swipe / tap navigation; add + delete UX)
+         │     └─► PageContentView × N+1
+         │           ├─► ScribbleCanvasView  (only on the current page; PKCanvasView + toolPicker)
+         │           └─► ElementContainerView × M  (one per CanvasElement on that page)
+         │                 └─► TextElementView | ImageElementView | AudioElementView
          ├─► PhotosPicker (toolbar)
          └─► AudioRecorderSheet (modal)
                   └─► AudioRecorderManager / AudioPlaybackManager (AVFoundation)
@@ -96,7 +96,7 @@ MiroCloneApp (@main)
 
 - `CanvasStore` (`@Published` `pages`, `currentPageIndex`, plus UI state `selectedElementID`, `focusedTextID`, `drawMode`, `canvasSize`) is the **single source of truth**.
 - `elements` and `scribble` on the store are **computed accessors** into `pages[currentPageIndex]` so views keep reading `store.elements` / `store.scribble` without knowing which page is current. `scribble` has a custom setter that writes back to the current page.
-- `FreeformCanvasView`, every `ElementContainerView`, and `PageStripView` observe the store via `@ObservedObject`.
+- `PageCarouselView` and every `PageContentView` / `ElementContainerView` observe the store via `@ObservedObject`.
 - All mutations go *into* the store via methods (`addText`, `addImage(data:)`, `addAudio(fileURL:duration:)`, `moveElement`, `setWidth`, `setHeight`, `setTextHeight`, `updateElementText`, `select`, `focusText`, `clearTextFocus`, `toggleDrawMode`, `remove`, `updateCanvasSize`, `addPage`, `switchToPage(at:)`, `removePage(at:)`).
 - Position is a **stored** property on `CanvasElement`, not derived — this is what makes "moving one block never affects another" trivially true.
 
@@ -123,8 +123,8 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 **Startup sequence (effectively):**
 
 1. iOS launches `MiroCloneApp.main`.
-  2. `JournalView` is constructed; `@StateObject` creates `CanvasStore` (empty `elements`, `drawMode = false`).
-3. `NavigationStack` + `GeometryReader` lay out. `FreeformCanvasView` appears, registers its canvas size on `onAppear`.
+2. `JournalView` is constructed; `@StateObject` creates `CanvasStore` (one empty `Page`, `currentPageIndex = 0`, `drawMode = false`).
+3. `NavigationStack` + `PageCarouselView` lay out. `PageCarouselView` reports its computed `pageSize` (≈ 45% of container width, height‑limited) to `store.updateCanvasSize`.
 4. Toolbar items are bound immediately; nothing is fetched because there is no remote data.
 
 ## 6. Core Modules
@@ -140,7 +140,7 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
   - Persist image bytes to `Documents/Images/<UUID>.jpg` and audio bytes to `Documents/Audio/<UUID>.m4a`.
   - Move / resize / delete elements, with clamping against `canvasSize` and `DesignSystem.minBlockWidth/minBlockHeight`. Element lookup is currently scoped to the current page.
 - **Depends on:** `Page`, `DesignSystem` (shared), `UIKit` (for `UIImage`), `PencilKit` (for `PKDrawing`).
-- **Consumers:** `JournalView`, `FreeformCanvasView`, `ScribbleCanvasView`, `ElementContainerView`, `TextElementView`, `ImageElementView`, `AudioElementView`, `AudioRecorderSheet`, `PageStripView`.
+- **Consumers:** `JournalView`, `PageCarouselView`, `PageContentView`, `ScribbleCanvasView`, `ElementContainerView`, `TextElementView`, `ImageElementView`, `AudioElementView`, `AudioRecorderSheet`.
 
 ### Page (`Features/Journal/Models/Page.swift`)
 
@@ -155,13 +155,30 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 - **`frame` computed property** is used for both rendering and implicit hit testing.
 - Conforms to `Identifiable`, `Codable`, `Equatable`. (Codable exists but the store does not currently encode/decode the array to disk — see §18.)
 
-### FreeformCanvasView (`Features/Journal/Canvas/FreeformCanvasView.swift`)
+### PageCarouselView (`Features/Journal/Canvas/PageCarouselView.swift`)
 
-- **Purpose:** The board surface. Hosts the scribble layer and the element layer.
+- **Purpose:** Top‑level horizontal page navigator. Renders prev / current / next pages at a reduced size and handles swipe + tap navigation and add‑page UX.
 - **Key behaviour:**
-  - Declares the `"canvas"` named coordinate space so child drag gestures (element drag, width/height handles) read coordinates directly from SwiftUI.
-  - On `onAppear` / `onChange(of: size)` it reports the canvas size to `store.updateCanvasSize`.
-- **Layer order (bottom→top):** board background → `ScribbleCanvasView` (PencilKit) → element layer (only hit‑testable when `!drawMode`).
+  - Computes a scaled `pageSize` from the container: width is min(45% of container width, 70% of container height / 1.3), height = width × 1.3 (tall sheet‑of‑paper aspect). Reports this `pageSize` to `store.updateCanvasSize`.
+  - Lays out three slots — previous page, current page, next page (or "Add Page" area if `currentPageIndex == pages.count - 1`) — in a `ZStack`, offset by `(index - currentPageIndex) * spacing + dragOffset`.
+  - Neighboring pages (and the Add Page area) are offset downward by `pageSize.height * 0.08` to read as "behind" the centered current page.
+  - Each page is wrapped in a `VStack` with a dynamic page number underneath (`pageNumberLabel`).
+  - **Swipe gesture** (`DragGesture(minimumDistance: 20)`) tracks `dragOffset` live for visual feedback; on `onEnded`, if drag exceeds 25% of `spacing`, it `switchToPage(at: +1)`, `switchToPage(at: -1)`, or `addPage()` (when swiping past the last page). Swipes are ignored while `drawMode` is on.
+  - **Delete** is *not* part of this view — it's a pill on `PageContentView` (see below).
+- **Layer constants (private):** `pageWidthFraction = 0.45`, `pageAspectRatio = 1.3`, `maxPageHeightFraction = 0.7`, `spacingFactor = 1.15`, `swipeThreshold = 0.25`.
+
+### PageContentView (`Features/Journal/Canvas/PageContentView.swift`)
+
+- **Purpose:** Renders one page: background, scribble layer (interactive or static), elements, and (when `isCurrent`) a delete pill.
+- **Key behaviour:**
+  - Stack (bottom → top): page background → scribble layer → elements → optional delete pill.
+  - **Scribble layer branches on `isCurrent`:**
+    - `isCurrent == true` → `ScribbleCanvasView(store:)` (interactive `PKCanvasView`).
+    - `isCurrent == false` → `staticScribbleImage`: a snapshot produced by `page.scribble.image(from: pageSize rect, scale: UIScreen.main.scale)`. Returns `nil` (no image rendered) when the drawing's data is empty.
+  - Element layer: `ForEach(page.elements)` renders each `ElementContainerView` at `element.position`. Hit‑testing is gated to `isCurrent && !drawMode` — neighboring pages are not interactive.
+  - Owns the `"canvas"` coordinate space for its own bounds, so element drag/resize/PencilKit gestures read coordinates already in the page's own coordinate system.
+  - **Delete pill:** red "Delete" `Capsule` button at the top of the current page; tap → `store.removePage(at: pageIndex)` (no confirmation dialog — destructive and immediate).
+  - Tap on the page background (when current + not drawing) → `store.select(nil)`.
 
 ### ElementContainerView (`Features/Journal/Canvas/ElementContainerView.swift`)
 
@@ -173,31 +190,23 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
   - Width handle (right edge) and height handle (bottom edge; image/audio only) for resize; text height is auto‑measured.
   - Delete button (top‑right) visible when selected.
   - `moveEnabled = !isText || !isFocused` — text is only draggable when not being edited.
+  - All drag/handle gestures use `.coordinateSpace(.named("canvas"))`, which is declared by `PageContentView` (the immediate parent in the rendering tree) — so coordinates are already in the page's own coordinate system.
 
 ### ScribbleCanvasView (`Features/Journal/Canvas/ScribbleCanvasView.swift`)
 
-- **Purpose:** `UIViewRepresentable` wrapping `PKCanvasView`.
+- **Purpose:** `UIViewRepresentable` wrapping `PKCanvasView`, used only inside the current page's `PageContentView`.
 - **Key behaviour:**
   - When `drawMode == true`: enables interaction, becomes first responder, shows `PKToolPicker`, registers it as observer.
-  - When `drawMode == false`: hides tool picker, resigns first responder, disables interaction. Sits underneath the elements.
+  - When `drawMode == false`: hides tool picker, resigns first responder, disables interaction. Sits underneath the elements layer.
   - `drawingPolicy = .anyInput` (finger + Pencil, Notes‑style).
-  - Delegate forwards `canvasViewDrawingDidChange` → `store.scribble = canvasView.drawing`, so Scribble strokes are persisted in the store (in memory — see §18).
-  - Avoids re‑assigning `uiView.drawing` when PencilKit itself is the source of the change.
-  - Tracks the `boundPageID` of the drawing currently in the `PKCanvasView`. When the page changes, `updateUIView` swaps `uiView.drawing = store.scribble` and sets `suppressNextDrawingChange` so PencilKit's first delegate call after a programmatic swap doesn't write the new page's strokes back to the old page (or vice versa).
-
-### PageStripView (`Features/Journal/Canvas/PageStripView.swift`)
-
-- **Purpose:** Horizontal scroll of page thumbnails + "+" button at the bottom of `JournalView`. Lets the user flip between pages and add/delete them.
-- **Key behaviour:**
-  - Each page is rendered as a small numbered card (`pageThumbnailWidth × pageThumbnailHeight`); the current page is outlined in accent color with a small dot in the corner.
-  - Tap → `store.switchToPage(at:)`. The strip auto‑scrolls the current page into view via `ScrollViewReader`.
-  - Long‑press / context menu on any page shows a "Delete Page" action that presents a `confirmationDialog` before calling `store.removePage(at:)`.
-  - Trailing "+" button calls `store.addPage()` and selects the new page.
+  - Delegate forwards `canvasViewDrawingDidChange` → `store.scribble = canvasView.drawing` (via the `lastAssignedDrawingData` echo‑skip — see below).
+  - Tracks `boundPageID` of the drawing currently in the `PKCanvasView`. When `currentPageIndex` changes, `updateUIView` swaps `uiView.drawing = store.scribble`.
+  - **Echo suppression via `lastAssignedDrawingData`:** whenever we programmatically assign a drawing, we stash its `dataRepresentation()`. The next `canvasViewDrawingDidChange` is only skipped when the new `canvasView.drawing` is byte‑equal to that — i.e., PencilKit's echo of our own assignment. Real user strokes are never byte‑equal, so they always reach the store.
 
 ### TextElementView + AutoGrowingTextView (`Features/Journal/Elements/`)
 
 - **TextElementView** is a thin SwiftUI host.
-- **AutoGrowingTextView** is a `UIViewRepresentable` around a non‑scrolling `UITextView`. Why: SwiftUI's `TextEditor` doesn't give a reliable intrinsic size that wraps text correctly inside a fixed‑width block.
+- **AutoGrowingTextView** is a `UIViewRepresentable` around a non‑scrolling `UITextView`. Why: SwiftUI's native `TextEditor` doesn't give a reliable intrinsic size that wraps text correctly inside a fixed‑width block.
 - Reports every height change via `onHeightChange → store.setTextHeight(_:height:)`. Because the text view is non‑scrolling and `sizeThatFits` is given an exact width, the block's frame is always the height of the actual text — no flow engine.
 - Editing is opt‑in (`isEditable = isFocused`); `onFocusDidBegin/End` notifies the store so drag can take over again.
 - `textContainer.widthTracksTextView = true` + an explicit `sizeThatFits(_:uiView:context:)` overrides the "types past the block" bug where SwiftUI gives a `UIViewRepresentable` no reliable intrinsic width.
@@ -228,18 +237,18 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 | File | Why it matters |
 |------|---------------|
 | `App/MiroCloneApp.swift` | The single `@main` entry point. |
-| `Features/Journal/JournalView.swift` | Top screen; `VStack` of `FreeformCanvasView` + `PageStripView`; wires the toolbar (add text/image/audio, toggle Scribble), presents the audio sheet, handles `PhotosPicker` data → `store.addImage(data:)`. |
+| `Features/Journal/JournalView.swift` | Top screen; embeds `PageCarouselView`; wires the toolbar (add text/image/audio, toggle Scribble), presents the audio sheet, handles `PhotosPicker` data → `store.addImage(data:)`. |
 | `Features/Journal/Models/Page.swift` | One page: owns its own elements + scribble layer. |
 | `Features/Journal/Models/CanvasStore.swift` | All state (pages + current page + UI state), all mutations, file I/O for images & audio. The "brain". |
 | `Features/Journal/Models/CanvasElement.swift` | The data shape; defines that `position` is stored (not derived). |
-| `Features/Journal/Canvas/FreeformCanvasView.swift` | Named coordinate space contract + board layout. |
+| `Features/Journal/Canvas/PageCarouselView.swift` | Horizontal page carousel; swipe / tap navigation; Add Page area on the last position. |
+| `Features/Journal/Canvas/PageContentView.swift` | One page's surface; interactive scribble when current, static image when neighbor; owns the `"canvas"` coordinate space; red Delete pill. |
 | `Features/Journal/Canvas/ElementContainerView.swift` | All per‑block gestures (select, drag, resize, delete). Writes position back to the store on every drag tick. |
-| `Features/Journal/Canvas/ScribbleCanvasView.swift` | PencilKit + system `PKToolPicker` integration; swaps drawing on page change with one‑shot delegate suppression. |
-| `Features/Journal/Canvas/PageStripView.swift` | Horizontal page thumbnails + "+" button + delete (via context menu + confirmation dialog). |
+| `Features/Journal/Canvas/ScribbleCanvasView.swift` | PencilKit + system `PKToolPicker` integration; `lastAssignedDrawingData` echo‑skip. |
 | `Features/Journal/Elements/AutoGrowingTextView.swift` | Why text height matches content; opt‑in editing; the `sizeThatFits` override. |
 | `Features/Journal/Elements/AudioRecorderSheet.swift` | Microphone permission flow + `AVAudioRecorder` setup. |
 | `Features/Journal/Elements/AudioElementView.swift` | `AVAudioPlayer` + per‑view playback manager. |
-| `Shared/DesignSystem.swift` | All sizing/padding tokens, including page‑strip sizing. |
+| `Shared/DesignSystem.swift` | All sizing/padding tokens. |
 | `MiroCloneiPad.xcodeproj/project.pbxproj` | Build settings (iOS 17.6, Swift 5, sandbox on, hardened runtime on, mic + photos usage descriptions, app groups registered). |
 
 ## 8. Data Flow
@@ -260,7 +269,7 @@ Toolbar tap (JournalView)
                   ▼
               store.selectedElementID = newElement.id        (each add auto‑selects)
                   ▼
-              FreeformCanvasView re‑renders (ForEach picks up new element)
+              PageCarouselView re-renders (PageContentView for current page picks up the new element)
 ```
 
 ### Dragging a block
@@ -274,12 +283,59 @@ ElementContainerView (gesture = DragGesture(coordinateSpace: .named("canvas")))
         store.elements[i].position     ─► view re‑renders at new offset
 ```
 
-### Zoom / pan
+### Switching pages (carousel)
 
 ```text
-(Zoom / pan was removed; the board renders at a fixed 1:1 scale. Element
-drag and width/height handles still read the `"canvas"` named coordinate
-space directly — no transform in between.)
+PageCarouselView swipe gesture
+  ├─ onChanged (DragGesture, minimumDistance 20)
+  │       guard !drawMode; dragOffset = value.translation.width
+  │       ─► PageCarouselView re-renders, pages slide horizontally
+  └─ onEnded
+          let threshold = spacing * 0.25
+          withAnimation(.spring)
+            if translation.width < -threshold:          // swipe left
+              if last page        → store.addPage()     (auto-creates next)
+              else                → store.switchToPage(at: currentPageIndex + 1)
+            elif translation.width > threshold:          // swipe right
+              if not first page   → store.switchToPage(at: currentPageIndex - 1)
+            dragOffset = 0
+
+Tapping a side page (non-current PageContentView):
+  ─► store.switchToPage(at: that index)
+  ─► previousPage/currentPage/trailingContent re-layout around the new index
+
+store.switchToPage(at:) sets:
+  currentPageIndex = index
+  selectedElementID = nil
+  focusedTextID = nil
+  drawMode = false
+
+ScribbleCanvasView.updateUIView on currentPageIndex change
+  ─► boundPageID != current page ID
+  ─► lastAssignedDrawingData = store.scribble.dataRepresentation()
+  ─► uiView.drawing = store.scribble            (swap the PencilKit drawing)
+  ─► boundPageID = currentPageID
+```
+
+Note: elements stay in their own coordinate system because `PageContentView` declares the `"canvas"` coordinate space per‑page. Element positions are not reflowed when the page's size changes — they stay where the user placed them.
+
+### Adding / deleting a page
+
+```text
+Adding:
+  PageCarouselView Add Page area tap (right of last page)
+  ─► store.addPage()       ─► pages.append(Page())
+                              ─► switchToPage(at: pages.count - 1)
+  or: swipe-left past last page
+  ─► store.addPage()       (same as above)
+
+Deleting (current page only, no confirmation):
+  PageContentView Delete pill tap (top of current page)
+  ─► store.removePage(at: pageIndex)
+        ─► pages.remove(at: index)
+        ─► if pages.isEmpty → pages = [Page()]; currentPageIndex = 0
+        ─► index fixup of currentPageIndex (clamp to last, or decrement if deleting before current)
+        ─► clear selection / focusedTextID / drawMode
 ```
 
 ### Editing text
@@ -304,30 +360,6 @@ AudioElementView "play" button
         ─► audioPlayerDidFinishPlaying ─► isPlaying = false
 ```
 
-### Switching pages
-
-```text
-PageStripView thumbnail tap OR "+" tap
-  ├─ thumbnail tap ─► store.switchToPage(at: index)
-  │       ─► currentPageIndex = index
-  │       ─► selectedElementID = nil, focusedTextID = nil, drawMode = false
-  │             (UI‑only state can't follow across pages)
-  └─ "+" tap       ─► store.addPage()      ─► pages.append(Page())
-                                              ─► switchToPage(at: pages.count - 1)
-
-ScribbleCanvasView.updateUIView on currentPageIndex change
-  ─► boundPageID != current page ID
-  ─► uiView.drawing = store.scribble    (swap the PencilKit drawing to the new page)
-  ─► coordinator.suppressNextDrawingChange = true   (skip one echo back)
-  ─► PageStripView auto‑scrolls the new thumbnail into center (ScrollViewReader)
-```
-
-Long‑press / context menu on a thumbnail:
-  ─► store.removePage(at: index) confirmed via confirmationDialog
-        ─► pages.remove(at: index); if pages empty → pages = [Page()]
-        ─► if the deleted index was ≤ currentPageIndex, currentPageIndex -= 1
-```
-
 ### Pencil / Scribble
 
 ```text
@@ -336,25 +368,39 @@ Toggle Scribble toolbar button
         ─► ScribbleCanvasView.setDrawMode(true, on:)
               ─► toolPicker.addObserver / setVisible(true, forFirstResponder:)
               ─► PKCanvasView.becomeFirstResponder()      (system tool picker appears)
-        ─► canvasViewDrawingDidChange ─► store.scribble = canvasView.drawing
+        ─► canvasViewDrawingDidChange
+              ─► if drawing byte-equals lastAssignedDrawingData → echo, skip
+              ─► else → store.scribble = canvasView.drawing
 
 Toggle off  ─► toolPicker hidden, PKCanvasView resigns first responder, interaction disabled,
                element layer becomes hit‑testable again.
 ```
 
+### Rendering non-current pages
+
+```text
+For each non-current page, PageContentView computes:
+  staticScribbleUIImage = page.scribble.image(from: pageSize rect, scale: UIScreen.main.scale)
+  (returns nil if page.scribble.dataRepresentation() is empty)
+Then renders Image(uiImage:).resizable().scaledToFill() at the page's offset in the carousel.
+This means switching pages is just a layout update — no PKCanvasView is created for non-current pages.
+```
+
 ## 9. Major Business Logic
 
-1. **Position is the single source of truth for layout.** No derived positions, no reflow, no flow layout. `CanvasElement.position` is read for rendering, hit testing, and the drag gesture's write‑back. This is the explicit answer to the historical bug where moving a block affected other blocks.
+1. **Position is the single source of truth for layout.** No derived positions, no reflow, no flow layout. `CanvasElement.position` is read for rendering, hit testing, and the drag gesture's write‑back.
 2. **Drag writes on every tick, not on commit.** The drag's `onChanged` calls `store.moveElement` with the current `start + translation`, so model / visual / hit‑test rectangle are always in lockstep — no temporary visual offset to reconcile on `onEnded`.
 3. **Cascading default placement for new blocks.** `nextDefaultPosition()` is a creation‑time convenience (`(inset + col*spacing, inset + row*spacing)`); once created, the element owns its position.
-4. **The board renders at a fixed 1:1 scale.** There is no zoom or pan. Element drag, width/height handles, and PencilKit touches all read the `"canvas"` named coordinate space directly; nothing in between warps the frame.
+4. **The board renders at a fixed 1:1 scale.** There is no zoom or pan. Element drag, width/height handles, and PencilKit touches all read the `"canvas"` named coordinate space directly. Because `PageCarouselView` reports a *scaled-down* `pageSize` (≈ 45% of container width) to `store.updateCanvasSize`, the effective element coordinate space is also that scaled size — element positions are clamped against the page's own size, not the screen's.
 5. **Draw mode is exclusive.** Selecting any element exits Draw mode; toggling Draw mode clears selection and text focus. Elements are non‑interactive while Draw mode is on.
 6. **Text editing is opt‑in and isolated.** A text block is draggable when *not* focused, so caret/selection gestures always win during editing. Height is auto‑measured (`AutoGrowingTextView.sizeThatFits` + `recalculateHeight` → `store.setTextHeight`).
-7. **Scribble strokes live in their own layer.** `store.scribble: PKDrawing` is independent of `elements`; PencilKit is the source of truth while Draw mode is on, and the store mirrors its state via the delegate.
+7. **Scribble strokes live in their own layer.** `store.scribble: PKDrawing` is independent of `elements`; PencilKit is the source of truth while Draw mode is on. Only the current page instantiates a `PKCanvasView`; neighbor pages render their scribbles as a static `UIImage` snapshot.
 8. **Block content lives in the Documents directory.** Image bytes are written directly into `Documents/Images/<UUID>.jpg`; audio is copied from a temp recording into `Documents/Audio/<UUID>.m4a`. The `CanvasElement` stores only the file name.
-9. **Min/max constraints.** Elements are clamped to `minBlockWidth × minBlockHeight` and to the canvas content rectangle on resize and drag.
-10. **Pages are independent sheets of state.** `pages[currentPageIndex]` is what every element + scribble mutation reads and writes; switching pages clears UI‑only state (selection, text focus, draw mode) because that state can't follow across. The board always has at least one page; deleting the only page inserts a fresh empty replacement. The `PKCanvasView`'s drawing is swapped in lock‑step with `currentPageIndex` change (with one‑shot delegate suppression so PencilKit doesn't echo the swap back into the store).
+9. **Min/max constraints.** Elements are clamped to `minBlockWidth × minBlockHeight` and to the (scaled) page's `canvasSize` on resize and drag.
+10. **Pages are independent sheets of state.** `pages[currentPageIndex]` is what every element + scribble mutation reads and writes; switching pages clears UI‑only state (selection, text focus, draw mode) because that state can't follow across. The board always has at least one page; deleting the only page inserts a fresh empty replacement. The `PKCanvasView`'s drawing is swapped in lock‑step with `currentPageIndex` change (echo suppression by byte‑equality, so PencilKit doesn't echo the swap back into the store).
 11. **UI‑state vs page‑state split.** Pages own their `elements` and `scribble`; selection, text focus, draw mode, and canvas size are global because they're tied to the user/UI, not the page.
+12. **Page navigation is multi-modal.** A user can switch pages by (a) swiping horizontally on the carousel, (b) tapping a side page, (c) tapping the dashed "Add Page" card on the last position, or (d) swiping left past the last page (auto-creates the next). All paths go through `CanvasStore.switchToPage(at:)` or `CanvasStore.addPage()`.
+13. **Page deletion is destructive and immediate.** A red "Delete" pill sits at the top of the current page; tapping it calls `CanvasStore.removePage(at:)` directly with no confirmation. The store still guarantees "at least one page" via its existing fallback.
 
 ## 10. API / Routes
 
@@ -372,9 +418,11 @@ Toggle off  ─► toolPicker hidden, PKCanvasView resigns first responder, inte
 | Resize element         | width/height handle drag → `store.setWidth` / `setHeight`          |
 | Auto‑resize text       | `AutoGrowingTextView` → `store.setTextHeight(id, height:)`         |
 | Delete element         | delete button → `store.remove(id)`                                  |
-| Add page               | `PageStripView` "+" → `store.addPage()`                              |
-| Switch page            | `PageStripView` thumbnail tap → `store.switchToPage(at:)`            |
-| Delete page            | thumbnail context menu → `confirmationDialog` → `store.removePage(at:)` |
+| Switch page (swipe)    | `PageCarouselView` `DragGesture` → `store.switchToPage(at:)` / `store.addPage()` (past last) |
+| Switch page (tap)      | Tap a side `PageContentView` → `store.switchToPage(at:)`            |
+| Add page (tap)         | Tap dashed "Add Page" card → `store.addPage()`                      |
+| Add page (swipe)       | Swipe left past last page → `store.addPage()`                       |
+| Delete page            | Tap red "Delete" pill on current `PageContentView` → `store.removePage(at:)` |
 
 ## 11. Database / Data Model
 
@@ -400,7 +448,7 @@ None. No login, no account, no token, no permission gate beyond the OS‑level p
 | Integration | Purpose | Where | Failure behavior |
 |-------------|---------|-------|------------------|
 | Apple Photos (via `PhotosPicker`) | Source of image bytes for new image blocks | `JournalView` toolbar | If load fails, the picker is silently dismissed; `store.addImage(data:)` is never called. |
-| PencilKit (`PKCanvasView`, `PKToolPicker`, `PKDrawing`) | Free‑form drawing layer, system tool palette | `ScribbleCanvasView` | Wrapped in `UIViewRepresentable`; if PencilKit unavailable on the OS version this would crash — but iOS 17.6+ guarantees it. |
+| PencilKit (`PKCanvasView`, `PKToolPicker`, `PKDrawing`) | Free‑form drawing layer, system tool palette | `ScribbleCanvasView` (inside current `PageContentView`) | Wrapped in `UIViewRepresentable`; if PencilKit unavailable on the OS version this would crash — but iOS 17.6+ guarantees it. |
 | AVFoundation (`AVAudioRecorder`, `AVAudioPlayer`) | Audio capture & playback | `AudioRecorderManager`, `AudioPlaybackManager` | Errors logged via `print("Recording error: …")` / `print("Playback error: …")`. No user‑facing error UI besides "Microphone access is disabled. Enable it in Settings…". |
 
 No third‑party SDKs. No network. No analytics. No crash reporting.
@@ -425,7 +473,7 @@ Key build settings (verified from `MiroCloneiPad.xcodeproj/project.pbxproj`):
 - `MARKETING_VERSION = 1.0`, `CURRENT_PROJECT_VERSION = 1`
 - `DEVELOPMENT_TEAM = 275W6TG8C4` (Apple developer team ID — not a secret, just identifies the signing team)
 - `INFOPLIST_KEY_NSMicrophoneUsageDescription`, `INFOPLIST_KEY_NSPhotoLibraryUsageDescription` set on both Debug and Release
-- `LOCALIZATION_PREFERS_STRING_CATALOGS = YES`, `STRING_CATALOG_GENERATE_SYMBOLS = YES` — there is no `.xcstrings` file in the repo yet, so all visible strings ("Journal", "Add Text", "Type here…", "Ready to record", "Cancel", etc.) are hardcoded English literals inline.
+- `LOCALIZATION_PREFERS_STRING_CATALOGS = YES`, `STRING_CATALOG_GENERATE_SYMBOLS = YES` — there is no `.xcstrings` file in the repo yet, so all visible strings ("Journal", "Add Text", "Add Page", "Type here…", "Ready to record", "Delete", "Cancel", etc.) are hardcoded English literals inline.
 
 There are no `.env`, no `Secrets.swift`, no API keys.
 
@@ -456,12 +504,12 @@ There is no `lint`, `format`, or `test` step wired into the project. There is no
 
 These are patterns repeatedly used in the code that future work should follow:
 
-1. **Store as the single source of truth.** Every state change goes through a `CanvasStore` method; views never mutate `CanvasElement` directly. (`ElementContainerView` writes only via `store.moveElement`, `store.setWidth`, etc.)
+1. **Store as the single source of truth.** Every state change goes through a `CanvasStore` method; views never mutate `CanvasElement` or `Page` directly. (`ElementContainerView` writes only via `store.moveElement`, `store.setWidth`, etc.)
 2. **Stored position, no derived layout.** New block kinds or layout strategies should keep position stored on the element. Resist any "reflow on neighbour change" temptation.
 3. **Drag‑writes‑on‑every‑tick.** Gestures that change geometry should update the model on `onChanged`, not on `onEnded` (matches `ElementContainerView.moveGesture`). This keeps the visual frame, hit test, and model position identical at all times.
 4. **DesignSystem is the only place for sizing tokens.** Don't hardcode `cornerRadius`, `minBlockWidth`, padding, etc. in views.
 5. **UIViewRepresentable wrappers are the bridge, not the model.** `AutoGrowingTextView` and `ScribbleCanvasView` are intentionally thin; all state lives in `CanvasStore` and is mirrored via delegate callbacks.
-6. **SwiftUI `GeometryReader` + named coordinate space contract.** Drag gestures inside `FreeformCanvasView` use `.coordinateSpace(.named("canvas"))`. Don't add a `scaleEffect` / `offset` modifier that wraps the board — element drag math is written against a 1:1 frame.
+6. **Coordinate space per-page.** `PageContentView` declares `.coordinateSpace(.named("canvas"))`. Drag gestures inside `ElementContainerView` rely on this to read coordinates already in the page's own coordinate system. Don't move the declaration or wrap the page in a `scaleEffect` / `offset` modifier — element drag math is written against the page's 1:1 frame.
 7. **Opt‑in editing for text blocks.** Anything that involves the caret / selection must check `isFocused` first so drag can take over otherwise.
 8. **File‑backed content, name in the model.** Heavy media lives in `Documents/Images` / `Documents/Audio`; the `CanvasElement` only stores a filename. Future media kinds should follow the same pattern.
 9. **Concurrency isolation.** Because `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, prefer keeping work on the main actor. The only off‑main work today is the `Task` around `PhotosPickerItem.loadTransferable`.
@@ -474,12 +522,14 @@ These are patterns repeatedly used in the code that future work should follow:
 - **No persistence of `CanvasStore.pages`.** `CanvasElement` is `Codable`, the store is `ObservableObject` with `@Published pages`, but no code reads or writes the page list to disk. On relaunch the canvas resets to a single empty page; the previously written image/audio files in `Documents/Images` and `Documents/Audio` are orphaned (no cleanup, no referencing record). `Page` itself isn't `Codable` yet either, so persisting it requires a tiny follow‑up.
 - **No tests.** No test target, no `*Tests*` folders, no SPM `Testing` glue. (Verified by repo search and project inspection.)
 - **Scribble strokes are not persisted.** `pages[i].scribble` is in‑memory only; closing/reopening the app loses every page's drawing. PencilKit itself could persist via `PKDrawing.dataRepresentation()` if desired.
-- **Page thumbnails are pure placeholders.** `PageStripView` shows numbered cards, not actual page previews. Rendering each page's contents into a thumbnail was deliberately skipped to keep the strip cheap to draw; switching to live previews would mean snapshotting the canvas.
 - **No image/audio cleanup on page delete.** `CanvasStore.removePage(at:)` removes the `Page` (and its `elements`) but does not delete the underlying files at `Documents/Images/<fileName>` or `Documents/Audio/<fileName>`. Same issue applies to `CanvasStore.remove(id:)` for individual element deletes.
 - **No undo/redo.** Despite PencilKit offering it natively for scribble, the app provides no undo for element moves/resizes/deletes or text edits.
+- **Page deletion is destructive with no confirmation.** The red "Delete" pill on the current page calls `store.removePage(at:)` directly — a single tap destroys a page (and all its elements).
 - **Logging is `print`-based** (`print("Failed to save image: …")`, `print("Recording error: …")`, `print("Playback error: …")`). No structured logging, no OSLog.
 - **No localization infrastructure in place.** Strings are inline English literals; `STRING_CATALOG_GENERATE_SYMBOLS = YES` is set but no `.xcstrings` catalog is present yet.
 - **`AudioPlaybackManager` per element.** Each `AudioElementView` creates its own `AudioPlaybackManager`. There's no shared audio session coordinator — playing two audio blocks simultaneously will both set the session to `.playback` and both play at once. The intent is unclear.
+- **Carousel reports a scaled-down `canvasSize` to the store.** Because `PageCarouselView` calls `store.updateCanvasSize(pageSize)` with the paper‑like size (≈ 45% of container width), element drag/resize clamping uses that small size. Elements placed near the "right" edge of the user's view will hit the `canvasSize.width - element.width` clamp before reaching the visible page edge. The user has no visual cue that the coordinate space ends before the visible page does.
+- **Neighboring pages re-render their static scribble image on every render.** `PageContentView.staticScribbleImage` calls `page.scribble.image(from:scale:)` per body evaluation. PencilKit's `PKDrawing.image(from:scale:)` is not free; on a 5‑page board this fires 4× per SwiftUI invalidation.
 
 ### Likely
 
@@ -488,10 +538,13 @@ These are patterns repeatedly used in the code that future work should follow:
 
 ### Unknown
 
-- The exact long‑term roadmap / target feature set. Git history shows earlier "pages" / 2‑page / 3D‑switch features were removed; the pivot to a single‑board freeform canvas appears deliberate, but no docs explain why.
-- Whether `Document Picker` / `Files` integration or iCloud sync is intended. `REGISTER_APP_GROUPS = YES` is set in the build settings but no app group identifier is configured in code, suggesting it was enabled speculatively.
-- How the app should handle low storage, full disk, or sandbox file restoration from iCloud / iTunes backup (no code addresses it).
-- Whether multi‑board / multi‑page is a near‑term goal (would justify persisting `elements` per board).
+- Whether persistence of `CanvasStore.pages` is planned for an imminent change.
+- Whether the orphaned image/audio files are intended to be cleaned up or retained (e.g., for a future "media library" feature).
+- Roadmap: multi‑board, undo/redo, share/export, iCloud sync, visionOS port — none of these appear in code.
+- Whether `DocumentPicker` integration is on the table (the `ENABLE_USER_SELECTED_FILES = readonly` and `READ‑ONLY` entitlement suggest it might be, but no code uses `UIDocumentPickerViewController`).
+- Localization strategy: `STRING_CATALOG_GENERATE_SYMBOLS = YES` is on but no `.xcstrings` is present, so the eventual plan is unclear.
+- Real‑device behaviour of the iOS 17.6 PencilKit tool picker inside the new `PageContentView` layout was not exercised; only the source is verified.
+- The carousel's swipe gesture is suppressed while `drawMode == true` (good), but the gesture lives at the top of `PageCarouselView`'s body — whether it correctly defers to PencilKit's pan + Pencil double‑tap gestures inside the current `PageContentView` was not empirically verified.
 
 ## 19. Important Dependencies Between Modules
 
@@ -499,15 +552,15 @@ These are patterns repeatedly used in the code that future work should follow:
 MiroCloneApp
    └── JournalView
          ├── CanvasStore                    (created here, passed down)
-         ├── VStack
-         │     ├── FreeformCanvasView             ── reads/writes store.canvasSize, .elements (current page)
-         │     │     ├── ScribbleCanvasView       ── reads/writes store.scribble (current page), store.drawMode; boundPageID tracks current page
-         │     │     └── ElementContainerView × N ── reads/writes store.selectedElementID, store.moveElement, .setWidth, .setHeight, .remove
-         │     │           ├── TextElementView    ── store.updateElementText, store.setTextHeight, store.focusText, store.clearTextFocus
-         │     │           │     └── AutoGrowingTextView  (UIViewRepresentable)
-         │     │           ├── ImageElementView   ── reads store.imagesURL
-         │     │           └── AudioElementView   ── reads store.audioURL + own AudioPlaybackManager (AVFoundation)
-         │     └── PageStripView            ── reads store.pages, store.currentPageIndex; calls store.switchToPage/addPage/removePage
+         ├── PageCarouselView              ── reads/writes store.pages, store.currentPageIndex; calls store.switchToPage / store.addPage; reports scaled pageSize to store.updateCanvasSize
+         │     └── PageContentView × (pages.count ± 1)
+         │           ├── ScribbleCanvasView       (only when isCurrent)  ── reads/writes store.scribble (current page), store.drawMode; boundPageID + lastAssignedDrawingData track identity + echo
+         │           ├── ElementContainerView × N  ── reads/writes store.selectedElementID, store.moveElement, .setWidth, .setHeight, .remove
+         │           │     ├── TextElementView    ── store.updateElementText, store.setTextHeight, store.focusText, store.clearTextFocus
+         │           │     │     └── AutoGrowingTextView  (UIViewRepresentable)
+         │           │     ├── ImageElementView   ── reads store.imagesURL
+         │           │     └── AudioElementView   ── reads store.audioURL + own AudioPlaybackManager (AVFoundation)
+         │           └── deleteButton            ── store.removePage(at: pageIndex)
          ├── PhotosPicker (PhotosUI)        ── on selection: store.addImage(data:)
          └── AudioRecorderSheet              ── on stop: store.addAudio(fileURL:duration:)
                   └── AudioRecorderManager    (AVFoundation, microphone permission)
@@ -515,24 +568,26 @@ MiroCloneApp
 CanvasStore ──► Page            (array of pages; elements + scribble live here)
 CanvasStore ──► FileManager     (Documents/Images, Documents/Audio)
 CanvasStore ──► DesignSystem    (Shared)
-FreeformCanvasView ──► DesignSystem (cornerRadius)
+PageCarouselView ──► DesignSystem (cornerRadius)
+PageContentView ──► DesignSystem (cornerRadius)
 ElementContainerView ──► DesignSystem (cornerRadius, minBlockWidth/Height, blockContentPadding)
-PageStripView ──► DesignSystem (pageThumbnailWidth/Height/cornerRadius, pageStripSpacing/Padding)
 ```
 
 Notable: there is **one** store, injected top‑down from `JournalView`. No singletons, no service locator, no DI container. All cross‑module references flow through `CanvasStore` (or, for media, through `store.imagesURL` / `store.audioURL` helpers that resolve to the Documents subdirectory). Page identity is opaque to views — they read `store.elements` / `store.scribble` and the store resolves to the current page behind a computed accessor.
 
 ## 20. Key Mental Model
 
-Read `MiroCloneApp` → it launches a `JournalView`. `JournalView` creates a `CanvasStore` (the brain) and a `NavigationStack` containing a `VStack { FreeformCanvasView; PageStripView }` plus a toolbar. The toolbar is the only way new content enters the current page: an Add‑Text button, a `PhotosPicker`, a Mic button (which presents `AudioRecorderSheet`), and a Scribble toggle. The page strip at the bottom of the screen is how the user switches pages or adds a new one (tap a thumbnail, or tap the trailing "+" button; long‑press / context menu on a thumbnail deletes it after a confirmation).
+Read `MiroCloneApp` → it launches a `JournalView`. `JournalView` creates a `CanvasStore` (the brain) and a `NavigationStack` containing a `PageCarouselView` plus a toolbar. The toolbar is the only way new content enters the current page: an Add‑Text button, a `PhotosPicker`, a Mic button (which presents `AudioRecorderSheet`), and a Scribble toggle.
+
+The carousel is the entire board. Pages are rendered at paper‑like size (≈ 45% of container width), with the current page centered and the previous / next pages peeking in on each side at a slight vertical offset. A dynamic page number sits under each page. The rightmost slot, when on the last page, becomes a dashed "Add Page" card. The current page has a red "Delete" pill at the top. Navigation is by swipe, by tapping a side page, by tapping the Add Page card, or by swiping past the last page.
+
+Each `PageContentView` renders one page: a paper background, a scribble layer (interactive `PKCanvasView` for the current page, static `UIImage` snapshot for neighbors), and a `ForEach` of `ElementContainerView`s for each element. `PageContentView` owns its own `"canvas"` coordinate space, so element drag math is always in the page's own coordinate system.
 
 The store holds a list of `Page`s and a `currentPageIndex`. Every `elements` / `scribble` read or write goes through the current page — views don't know which page is current, only the store does. UI‑only state (selection, text focus, draw mode, canvas size) is global because it follows the user, not the page; switching pages clears it. The board always has at least one page; deleting the only one inserts a fresh empty replacement.
 
-Everything you can see or interact with on the current page is a `CanvasElement` — a struct with a position, a size, and an optional payload (text, image filename, or audio filename). The board is a `ZStack` of three layers: the background, a `PKCanvasView` for free‑form drawing, and one `ElementContainerView` per element. The board renders at a fixed 1:1 scale — there is no zoom or pan. Drag gestures inside the board use a named coordinate space to read SwiftUI's coordinate frame directly.
-
 The store owns geometry. The `ElementContainerView`'s drag gesture does not maintain a "visual offset" — it computes the new top‑left point on every frame and writes it straight to `store.moveElement(_:to:)`, so the model is always the truth and there is nothing to reconcile. Resize handles work the same way. Text editing is opt‑in: a double‑tap focuses a block, a `UITextView` becomes the first responder, every change bubbles a measured height back so the block's frame matches the actual text.
 
-When the user switches pages, `ScribbleCanvasView` swaps `uiView.drawing` to the new page's drawing and suppresses one delegate echo so PencilKit doesn't immediately bounce the new page's strokes back into the old page.
+When the user switches pages, `ScribbleCanvasView` swaps `uiView.drawing` to the new page's drawing. The echo of that programmatic swap is filtered out by byte‑equality against `lastAssignedDrawingData`, so PencilKit doesn't bounce the new page's strokes back into the old page (and real user strokes, which are always byte‑different, always reach the store).
 
 Media content is stored as files in the app sandbox — `Documents/Images/<UUID>.jpg` and `Documents/Audio/<UUID>.m4a` — with only the filename kept on the element. Audio playback is per‑element via `AVAudioPlayer`; audio capture is a modal sheet driven by `AVAudioRecorder`. Drawing is a `PKDrawing` mirrored between PencilKit and the store via a delegate, scoped to the current page.
 
@@ -542,19 +597,19 @@ There is one screen, one store, no network, no database, no third‑party depend
 
 ### Confirmed
 
-- All Swift source files in `MiroCloneiPad/` were read end‑to‑end (18 files: the 16 originals + `Page.swift` and `PageStripView.swift` added for multi‑page support).
-- All build settings were read from `project.pbxproj`.
+- All Swift source files in `MiroCloneiPad/` were read end‑to‑end (18 files: the original 16, plus `Page.swift`, `PageCarouselView.swift`, and `PageContentView.swift`; the legacy `FreeformCanvasView.swift` and `PageStripView.swift` were removed in a cleanup pass).
+- Build is clean (`xcodebuild` succeeds; only the pre-existing `requestRecordPermission` deprecation warning).
+- `JournalView`'s body is `PageCarouselView` (confirmed by reading `JournalView.swift`).
+- `PageContentView` declares the `"canvas"` coordinate space per-page.
+- `ScribbleCanvasView` uses `lastAssignedDrawingData: Data?` for echo‑skipping (verified by reading `ScribbleCanvasView.swift`).
 - App entry point is `MiroCloneApp` (`@main`, `WindowGroup { JournalView() }`).
-- `CanvasStore` is the single `ObservableObject` driving the entire UI; it holds `[Page]` plus UI‑only state (`selectedElementID`, `focusedTextID`, `drawMode`, `canvasSize`). Zoom state was removed.
-- `elements` and `scribble` on the store are computed accessors into `pages[currentPageIndex]` — verified by reading `CanvasStore.swift`.
+- `CanvasStore` is the single `ObservableObject` driving the entire UI; it holds `[Page]` plus UI‑only state (`selectedElementID`, `focusedTextID`, `drawMode`, `canvasSize`).
+- `elements` and `scribble` on the store are computed accessors into `pages[currentPageIndex]`.
 - Three element kinds: `.text`, `.image`, `.audio` (via `ElementKind` enum).
-- Multi‑page behavior: app starts with one empty page, `addPage()` appends, `removePage(at:)` removes (with confirmation) and falls back to an empty page if the last one is deleted, `switchToPage(at:)` clears selection/focus/draw mode.
+- Multi‑page behavior: app starts with one empty page, `addPage()` appends, `removePage(at:)` removes (no confirmation in the new design) and falls back to an empty page if the last one is deleted, `switchToPage(at:)` clears selection/focus/draw mode.
 - Media persistence path: `Documents/Images/` and `Documents/Audio/` (`CanvasStore.imagesURL` / `audioURL`).
-- The board has no zoom; the `"canvas"` named coordinate space is declared on `FreeformCanvasView` and read by element drag + width/height handles.
-- `ScribbleCanvasView` swaps `PKCanvasView.drawing` when `currentPageIndex` changes, with a one‑shot delegate suppression to prevent the swap from echoing back into the store (verified by reading `ScribbleCanvasView.swift`).
-- `CanvasElement` is `Codable` but `CanvasStore.pages` is **not currently persisted** across launches — verified by absence of any JSON/Plist/SwiftData call in the codebase.
-- No test target, no third‑party dependencies (verified by repo file listing and `.pbxproj` inspection).
-- Microphone and Photo Library usage descriptions are present in both Debug and Release Info.plist generation settings.
+- `CanvasElement` is `Codable` but `CanvasStore.pages` is **not currently persisted** across launches.
+- No test target, no third‑party dependencies.
 - Bundle identifier `habil.MiroCloneiPad`, marketing version `1.0`, team `275W6TG8C4`.
 
 ### Likely
@@ -562,12 +617,15 @@ There is one screen, one store, no network, no database, no third‑party depend
 - `INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDefault`, `XROS_DEPLOYMENT_TARGET = 26.5`, `MACOSX_DEPLOYMENT_TARGET = 26.5` are default Xcode template residues, not intentional platform expansion.
 - The app groups entitlement is enabled (`REGISTER_APP_GROUPS = YES`) but no app group identifier is used in code; it's speculative.
 - Each `AudioElementView` owning its own `AudioPlaybackManager` is an intentional per‑element decision rather than oversight, but the code does not document why.
+- The `pageAspectRatio = 1.3` and `pageWidthFraction = 0.45` in `PageCarouselView` are tuned for iPad; on iPhone the same constants would produce a different visual density — likely intentional (single design across device families).
 
 ### Unknown
 
-- Whether persistence of `CanvasStore.elements` is planned for an imminent change.
-- Whether the orphaned image/audio files are intended to be cleaned up or retained (e.g., for a future "media library" feature).
+- Whether persistence of `CanvasStore.pages` is planned for an imminent change.
+- Whether the orphaned image/audio files are intended to be cleaned up or retained.
 - Roadmap: multi‑board, undo/redo, share/export, iCloud sync, visionOS port — none of these appear in code.
-- Whether `DocumentPicker` integration is on the table (the `ENABLE_USER_SELECTED_FILES = readonly` and `READ‑ONLY` entitlement suggest it might be, but no code uses `UIDocumentPickerViewController`).
+- Whether `DocumentPicker` integration is on the table.
 - Localization strategy: `STRING_CATALOG_GENERATE_SYMBOLS = YES` is on but no `.xcstrings` is present, so the eventual plan is unclear.
-- Real‑device behaviour of the iOS 17.6 PencilKit tool picker inside this exact layout was not exercised; only the source is verified.
+- Real‑device behaviour of the iOS 17.6 PencilKit tool picker inside `PageContentView` was not exercised; only the source is verified.
+- Whether the carousel's swipe gesture correctly defers to PencilKit's pan + Pencil double‑tap inside the current `PageContentView` on a real iPad.
+- Why the deletion UX has no confirmation; whether that's final or temporary.

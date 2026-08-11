@@ -164,12 +164,12 @@ final class CanvasStore: ObservableObject {
     /// model, the rendering, and hit testing all stay in lockstep — there
     /// is no temporary visual offset that later has to be committed.
     func moveElement(_ id: UUID, to topLeft: CGPoint) {
-        guard let pageIdx = pages.indices.first,
-              let idx = pages[pageIdx].elements.firstIndex(where: { $0.id == id }) else { return }
-        let element = pages[pageIdx].elements[idx]
+        guard pages.indices.contains(currentPageIndex),
+              let idx = pages[currentPageIndex].elements.firstIndex(where: { $0.id == id }) else { return }
+        let element = pages[currentPageIndex].elements[idx]
         let maxX = max(canvasSize.width - element.width, 0)
         let maxY = max(canvasSize.height - element.height, 0)
-        pages[pageIdx].elements[idx].position = CGPoint(
+        pages[currentPageIndex].elements[idx].position = CGPoint(
             x: min(max(topLeft.x, 0), maxX),
             y: min(max(topLeft.y, 0), maxY)
         )

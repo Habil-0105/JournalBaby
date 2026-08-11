@@ -21,18 +21,4 @@ enum DesignSystem {
     static let defaultTextWidth: CGFloat = 360
     static let defaultImageWidth: CGFloat = 320
     static let defaultAudioWidth: CGFloat = 280
-
-    // MARK: - Page strip
-
-    /// Size of each thumbnail in the page strip. Tall enough to read as a
-    /// card, small enough to fit several across an iPad screen.
-    static let pageThumbnailWidth: CGFloat = 56
-    static let pageThumbnailHeight: CGFloat = 80
-    static let pageThumbnailCornerRadius: CGFloat = 10
-
-    /// Horizontal gap between adjacent thumbnails and the inset from the
-    /// screen edge to the first / last thumbnail.
-    static let pageStripSpacing: CGFloat = 12
-    static let pageStripHorizontalPadding: CGFloat = 16
-    static let pageStripVerticalPadding: CGFloat = 10
 }
