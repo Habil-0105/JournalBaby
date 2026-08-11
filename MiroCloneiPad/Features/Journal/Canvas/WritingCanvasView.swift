@@ -3,34 +3,23 @@ import PencilKit
 import UIKit
 
 /// The writing-mode canvas: a single, large, centered rendering of the
-/// current page. Carousel neighbours are completely hidden (no PageStripView
-/// in this mode). The page is sized to ~85% of the container's width and
-/// ~75% of its height at the paper aspect ratio, leaving generous margins
-/// on all sides so the page reads as a *writing surface*, not a full-screen
-/// takeover.
+/// current page. Carousel neighbours are completely hidden.
 ///
-/// The view also installs a `MagnifyGesture` for pinch-out to exit
-/// writing mode (returning to the carousel). Pinching fingers together
-/// (zoom out) is the only path back from writing mode in this iteration.
-///
-/// When the keyboard appears the paper does **not** shrink: the surface
-/// ignores the keyboard safe area, so the paper keeps its original size
-/// and the content coordinates never change. Instead the paper is panned
-/// up by just enough to keep the actively-edited text element visible
-/// above the keyboard.
+/// Supports canvas zooming via pinch gestures within [1.0x, 3.0x].
+/// Zooming out to or below the minimum zoom level (1.0x) automatically
+/// transitions the user back to Carousel Mode. The zoom gesture correctly
+/// tracks the user's focal point, ensuring the canvas scales around their fingers.
 struct WritingCanvasView: View {
     @ObservedObject var store: CanvasStore
 
-    /// How far the paper is shifted up while the keyboard is visible, in
-    /// container points. 0 when no keyboard (paper is centered normally).
+    /// How far the paper is shifted up while the keyboard is visible.
     @State private var keyboardHeight: CGFloat = 0
 
-    /// Pinch magnification that flips the user back to carousel mode. A
-    /// value **below** 1 means fingers are pinching together — the natural
-    /// "zoom out" gesture that pulls the user out of the writing canvas
-    /// and back to the carousel preview. Tuned conservatively so casual
-    /// touch jitter doesn't accidentally exit.
-    private let exitPinchThreshold: CGFloat = 0.7
+    /// Persistent zoom and pan states for Writing Mode.
+    @State private var scale: CGFloat = DesignSystem.minWritingCanvasScale
+    @State private var lastScale: CGFloat = DesignSystem.minWritingCanvasScale
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
 
     /// Minimum clearance kept between the focused text element's bottom
     /// and the top of the keyboard while the paper is panned.
@@ -56,20 +45,21 @@ struct WritingCanvasView: View {
                         pageSize: pageSize
                     )
                     .frame(width: pageSize.width, height: pageSize.height)
+                    // Apply scale and spatial tracking for the pinch-to-zoom
+                    .scaleEffect(scale)
+                    .offset(offset)
+                    // Apply standard keyboard avoidance independent of the zoom offset
                     .offset(y: -viewportOffset)
                     .animation(.easeOut(duration: 0.25), value: keyboardHeight)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .contentShape(Rectangle())
-            // Tapping any empty space around the paper dismisses an active
-            // text edit (and deselection). Taps that land on the paper /
-            // elements are handled by their own gestures and take precedence,
-            // so this only fires for the surrounding canvas background.
             .onTapGesture {
                 store.select(nil)
             }
-            .gesture(pinchOutToExit)
+            // Pass the screen geometry into the gesture to calculate the correct focal center
+            .gesture(zoomGesture(in: geo.size))
             .onAppear { store.updateCanvasSize(pageSize) }
             .onChange(of: pageSize) { _, newSize in
                 store.updateCanvasSize(newSize)
@@ -96,9 +86,6 @@ struct WritingCanvasView: View {
         }
     }
 
-    /// Vertical shift (paper moves up by this much) needed to keep the
-    /// focused text element above the keyboard. Zero when the keyboard is
-    /// hidden or the focused element is already clear of it.
     private func keyboardViewportOffset(container: CGSize, pageSize: CGSize) -> CGFloat {
         guard keyboardHeight > 0, let focusedID = store.focusedTextID,
               let element = store.elements.first(where: { $0.id == focusedID })
@@ -111,14 +98,51 @@ struct WritingCanvasView: View {
         return max(needed, 0)
     }
 
-    private var pinchOutToExit: some Gesture {
+    /// Zoom gesture handling: allows pinching to zoom in/out with accurate finger tracking.
+    /// Pinching out to or below minWritingCanvasScale auto-exits Writing Mode.
+    private func zoomGesture(in size: CGSize) -> some Gesture {
         MagnifyGesture(minimumScaleDelta: 0)
             .onChanged { value in
-                guard value.magnification < exitPinchThreshold else { return }
-                // Only exit on a definitive pinch (fingers closing together);
-                // bouncing back inside the threshold shouldn't cancel an
-                // exit mid-gesture.
-                store.exitWritingMode()
+                let newScale = lastScale * value.magnification
+
+                if newScale <= DesignSystem.minWritingCanvasScale {
+                    // Reached minimum zoom level -> reset states and auto-exit
+                    scale = DesignSystem.minWritingCanvasScale
+                    offset = .zero
+                    store.exitWritingMode()
+                } else {
+                    // Clamp scale within the defined threshold bounds
+                    let clampedScale = min(newScale, DesignSystem.maxWritingCanvasScale)
+                    
+                    // Ratio of visual expansion in this specific gesture update
+                    let scaleDelta = clampedScale / lastScale
+
+                    // 1. Establish the view's center point
+                    let center = CGPoint(x: size.width / 2, y: size.height / 2)
+                    
+                    // 2. Vector distance from the center of the view to the pinch location
+                    let pinchOffsetFromCenter = CGSize(
+                        width: value.startLocation.x - center.x,
+                        height: value.startLocation.y - center.y
+                    )
+
+                    // 3. Shift the canvas opposite to the expansion to keep the location pinned
+                    scale = clampedScale
+                    offset = CGSize(
+                        width: pinchOffsetFromCenter.width - (pinchOffsetFromCenter.width - lastOffset.width) * scaleDelta,
+                        height: pinchOffsetFromCenter.height - (pinchOffsetFromCenter.height - lastOffset.height) * scaleDelta
+                    )
+                }
+            }
+            .onEnded { _ in
+                // Persist the transformation states only if we remain in Writing Mode
+                if scale > DesignSystem.minWritingCanvasScale {
+                    lastScale = scale
+                    lastOffset = offset
+                } else {
+                    lastScale = DesignSystem.minWritingCanvasScale
+                    lastOffset = .zero
+                }
             }
     }
 }
