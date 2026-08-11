@@ -139,6 +139,65 @@ final class CanvasStore: ObservableObject {
         drawMode = false
     }
 
+    // MARK: - Animated delete
+
+    /// Transient state for a delete operation the carousel is animating.
+    /// Holds the page data (so the ghost can render it during the exit)
+    /// and the index of the page that will become current once the
+    /// removal is confirmed. The actual removal is performed by
+    /// `confirmPendingDeletion()` after the carousel's exit animation
+    /// completes; until then `pages` and `currentPageIndex` are
+    /// untouched.
+    struct PendingDeletion: Equatable {
+        let page: Page
+        let originalIndex: Int
+        let replacementIndex: Int
+    }
+
+    @Published var pendingDeletion: PendingDeletion?
+
+    /// Captures the page-to-delete and its replacement index for animated
+    /// deletion. The carousel watches `pendingDeletion`, runs the exit
+    /// + entry animation, then calls `confirmPendingDeletion()` to apply
+    /// the actual removal using the existing `removePage(at:)` semantics.
+    func requestDeletePage(at index: Int) {
+        guard pages.indices.contains(index) else { return }
+        pendingDeletion = PendingDeletion(
+            page: pages[index],
+            originalIndex: index,
+            replacementIndex: replacementIndexAfterRemove(at: index)
+        )
+    }
+
+    /// Applies the actual removal (using `removePage(at:)`) and clears the
+    /// pending state. Only call this after the carousel's exit animation
+    /// has completed.
+    func confirmPendingDeletion() {
+        guard let pd = pendingDeletion else { return }
+        pendingDeletion = nil
+        removePage(at: pd.originalIndex)
+    }
+
+    /// Computes what `currentPageIndex` will be after `removePage(at:)` runs,
+    /// using the same logic as the existing removal. Used by the carousel
+    /// to know which page should rise into center during the entry half
+    /// of the delete animation.
+    private func replacementIndexAfterRemove(at index: Int) -> Int {
+        if index == currentPageIndex {
+            if pages.count == 1 {
+                return 0
+            }
+            if currentPageIndex == pages.count - 1 {
+                return currentPageIndex - 1
+            }
+            return currentPageIndex
+        }
+        if index < currentPageIndex {
+            return currentPageIndex - 1
+        }
+        return currentPageIndex
+    }
+
     // MARK: - On-disk storage for images / audio
 
     private var documentsURL: URL {

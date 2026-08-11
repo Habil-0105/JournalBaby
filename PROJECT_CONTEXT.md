@@ -142,6 +142,8 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 - **Depends on:** `Page`, `DesignSystem` (shared), `UIKit` (for `UIImage`), `PencilKit` (for `PKDrawing`).
 - **Consumers:** `JournalView`, `PageCarouselView`, `PageContentView`, `ScribbleCanvasView`, `ElementContainerView`, `TextElementView`, `ImageElementView`, `AudioElementView`, `AudioRecorderSheet`.
 
+- **Animated delete API:** the carousel drives an animated delete via `store.requestDeletePage(at:)` → `store.pendingDeletion` (`@Published` `PendingDeletion?`) → `store.confirmPendingDeletion()`. `confirmPendingDeletion` calls the existing `removePage(at:)` so the array mutation logic is unchanged.
+
 ### Page (`Features/Journal/Models/Page.swift`)
 
 - **Purpose:** A single page on the board — owns its own elements and its own scribble layer so switching pages swaps the whole visible state, the way flipping between sheets of paper does.
@@ -157,14 +159,21 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 
 ### PageCarouselView (`Features/Journal/Canvas/PageCarouselView.swift`)
 
-- **Purpose:** Top‑level horizontal page navigator. Renders prev / current / next pages at a reduced size and handles swipe + tap navigation and add‑page UX.
+- **Purpose:** Top‑level horizontal page navigator. Renders prev / current / next pages at a reduced size and handles swipe + tap navigation, add‑page UX, and delete animation.
 - **Key behaviour:**
   - Computes a scaled `pageSize` from the container: width is min(45% of container width, 70% of container height / 1.3), height = width × 1.3 (tall sheet‑of‑paper aspect). Reports this `pageSize` to `store.updateCanvasSize`.
   - **Resting layout:** current page is centered (offset 0). Previous / next / Add Page slots are pushed down so only the top **20%** of each side page peeks above the container bottom — the current page dominates, side pages read as the top edge of a deck beneath it. Side pages are also slightly smaller (`scaleEffect(0.95)`) for a subtle deck‑of‑cards perspective.
   - **Transitions are driven by `visualPageIndex: CGFloat`.** This is a fractional page index that drives rendering for every slot. At rest it equals `CGFloat(store.currentPageIndex)`; during a swipe it tracks the drag 1:1; on commit it springs to the new integer (with overshoot). Each slot at index `i` computes `delta = i - visualPageIndex`; that single value drives both horizontal offset (`delta * spacing`) and vertical offset (`|delta| * neighborVerticalOffset`, clamped to 1.0).
   - **Swipe gesture** (`DragGesture(minimumDistance: 20)`) updates `visualPageIndex` from drag translation in `onChanged` (no animation, so the drag tracks the finger). In `onEnded`, if the drag crossed 25% of `spacing`, it commits by setting `store.currentPageIndex` (or `store.addPage()` when swiping into the Add Page slot). `onChange(of: store.currentPageIndex)` then animates `visualPageIndex` to the new value with a spring (`response: 0.32s`, `dampingFraction: 0.62` — fast, snappy, small overshoot, quick settle). If the drag didn't commit (under‑threshold release, out‑of‑bounds swipe, draw‑mode cancel), `springVisualToCurrent()` springs `visualPageIndex` back to `currentPageIndex` directly.
-  - **Delete** is *not* part of this view — it's a pill on `PageContentView` (see below).
-- **Layer constants (private):** `pageWidthFraction = 0.45`, `pageAspectRatio = 1.3`, `maxPageHeightFraction = 0.7`, `spacingFactor = 1.15`, `swipeThreshold = 0.25`, `neighborVisibleFraction = 0.2`, `sidePageScale = 0.05`, `transitionResponse = 0.32`, `transitionDamping = 0.62`.
+  - **Delete animation.** When `store.pendingDeletion` becomes non‑nil, the carousel:
+    1. Computes `exitDirection` from which side the replacement page is coming from (ghost drifts toward the OPPOSITE side).
+    2. Adds `originalIndex` and the pre‑delete slot of the replacement to `hiddenSlotIndices` so the regular slot rendering doesn't double up.
+    3. Renders a **ghost** (the deleted page data, captured into `exitGhost`) at the original slot, animated with `exitProgress`: drifts `exitHorizontalDistanceFraction = 0.35 × pageWidth` outward in `exitDirection`, drops `exitVerticalDropFraction = 0.45 × pageHeight` down, fades opacity to 0, shrinks by `exitShrinkAmount = 0.1`.
+    4. Renders a **rising replacement** overlay (the page that will become current, pulled from `store.pages[preSlot]`) interpolating its visual delta from `preDelta = preSlot − originalIndex` (typically ±1) toward 0 as `exitProgress` goes 0 → 1 — so the replacement rises from its lower side position into center.
+    5. Springs `visualPageIndex` to `replacementIndex` and `exitProgress` to 1 with the same `spring(0.32, 0.62)` used by navigation.
+    6. After `deleteAnimationDuration = 0.5s` (matching the spring settle), calls `store.confirmPendingDeletion()` which calls `removePage(at:)` and clears `pendingDeletion`. The second branch of `handlePendingDeletionChange` then cleans up `exitGhost`, `exitProgress`, and `hiddenSlotIndices`.
+  - For single‑page deletes (only one page in the deck), the replacement is a fresh empty page that doesn't exist in `store.pages` until `confirmPendingDeletion`, so the rising overlay is omitted; the user just sees the ghost fade out and the layout snaps to the new empty page at center.
+- **Layer constants (private):** `pageWidthFraction = 0.45`, `pageAspectRatio = 1.3`, `maxPageHeightFraction = 0.7`, `spacingFactor = 1.15`, `swipeThreshold = 0.25`, `neighborVisibleFraction = 0.2`, `sidePageScale = 0.05`, `transitionResponse = 0.32`, `transitionDamping = 0.62`, `deleteAnimationDuration = 0.5`, `exitHorizontalDistanceFraction = 0.35`, `exitVerticalDropFraction = 0.45`, `exitShrinkAmount = 0.1`.
 
 ### PageContentView (`Features/Journal/Canvas/PageContentView.swift`)
 
@@ -176,7 +185,7 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
     - `isCurrent == false` → `staticScribbleImage`: a snapshot produced by `page.scribble.image(from: pageSize rect, scale: UIScreen.main.scale)`. Returns `nil` (no image rendered) when the drawing's data is empty.
   - Element layer: `ForEach(page.elements)` renders each `ElementContainerView` at `element.position`. Hit‑testing is gated to `isCurrent && !drawMode` — neighboring pages are not interactive.
   - Owns the `"canvas"` coordinate space for its own bounds, so element drag/resize/PencilKit gestures read coordinates already in the page's own coordinate system.
-  - **Delete pill:** red "Delete" `Capsule` button at the top of the current page; tap → `store.removePage(at: pageIndex)` (no confirmation dialog — destructive and immediate).
+  - **Delete pill:** red "Delete" `Capsule` button at the top of the current page; tap → `store.requestDeletePage(at: pageIndex)` (which kicks off the animated delete — see §8). No confirmation dialog — destructive and immediate.
   - Tap on the page background (when current + not drawing) → `store.select(nil)`.
 
 ### ElementContainerView (`Features/Journal/Canvas/ElementContainerView.swift`)
@@ -345,13 +354,36 @@ Adding:
   or: swipe-left past last page
   ─► store.addPage()       (same as above)
 
-Deleting (current page only, no confirmation):
+Deleting (animated, current page only — Delete pill is only shown when isCurrent):
   PageContentView Delete pill tap (top of current page)
-  ─► store.removePage(at: pageIndex)
-        ─► pages.remove(at: index)
-        ─► if pages.isEmpty → pages = [Page()]; currentPageIndex = 0
-        ─► index fixup of currentPageIndex (clamp to last, or decrement if deleting before current)
-        ─► clear selection / focusedTextID / drawMode
+  ─► store.requestDeletePage(at: pageIndex)
+        ─► store.pendingDeletion = PendingDeletion(
+              page: pages[pageIndex],
+              originalIndex: pageIndex,
+              replacementIndex: replacementIndexAfterRemove(at: pageIndex))
+        ─► onChange(of: store.pendingDeletion) in PageCarouselView fires:
+              beginDeleteAnimation(for: pd):
+                exitDirection = sign opposite of where replacement comes from
+                hiddenSlotIndices = {originalIndex, preSlot}
+                withAnimation(.spring(0.32, 0.62)):
+                  visualPageIndex = CGFloat(replacementIndex)
+                  exitProgress = 1
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5):
+                  store.confirmPendingDeletion()
+                    ─► pendingDeletion = nil
+                    ─► removePage(at: pd.originalIndex)
+                          ─► pages.remove(at: index)
+                          ─► if pages.isEmpty → pages = [Page()]; currentPageIndex = 0
+                          ─► index fixup of currentPageIndex
+                          ─► clear selection / focusedTextID / drawMode
+        ─► during the animation the carousel renders:
+              • ghost of the deleted page at slot originalIndex
+                (drift 0.35 × pageWidth outward in exitDirection,
+                 drop 0.45 × pageHeight down, fade opacity 1 → 0,
+                 shrink by 0.1)
+              • rising replacement overlay interpolating visual delta
+                from (preSlot − originalIndex) (typically ±1) to 0,
+                so the replacement page rises into center.
 ```
 
 ### Editing text
@@ -416,7 +448,7 @@ This means switching pages is just a layout update — no PKCanvasView is create
 10. **Pages are independent sheets of state.** `pages[currentPageIndex]` is what every element + scribble mutation reads and writes; switching pages clears UI‑only state (selection, text focus, draw mode) because that state can't follow across. The board always has at least one page; deleting the only page inserts a fresh empty replacement. The `PKCanvasView`'s drawing is swapped in lock‑step with `currentPageIndex` change (echo suppression by byte‑equality, so PencilKit doesn't echo the swap back into the store).
 11. **UI‑state vs page‑state split.** Pages own their `elements` and `scribble`; selection, text focus, draw mode, and canvas size are global because they're tied to the user/UI, not the page.
 12. **Page navigation is multi-modal.** A user can switch pages by (a) swiping horizontally on the carousel, (b) tapping a side page, (c) tapping the dashed "Add Page" card on the last position, or (d) swiping left past the last page (auto-creates the next). All paths go through `CanvasStore.switchToPage(at:)` or `CanvasStore.addPage()`.
-13. **Page deletion is destructive and immediate.** A red "Delete" pill sits at the top of the current page; tapping it calls `CanvasStore.removePage(at:)` directly with no confirmation. The store still guarantees "at least one page" via its existing fallback.
+13. **Page deletion is destructive and immediate.** A red "Delete" pill sits at the top of the current page; tapping it calls `CanvasStore.removePage(at:)` (via `requestDeletePage` → `confirmPendingDeletion`, which preserves the exact `removePage` semantics). The store still guarantees "at least one page" via its existing fallback.
 14. **The carousel is a deck, not a horizontal scroll.** Side pages sit at a deep y offset such that only their top 20% peeks above the container bottom; current page is centered and slightly larger (`scale = 1.0` vs `0.95` for neighbors). A single `visualPageIndex: CGFloat` drives both horizontal and vertical offset, so a swipe makes pages visibly rise from their lower position toward center instead of sliding horizontally.
 
 ## 10. API / Routes
@@ -439,7 +471,7 @@ This means switching pages is just a layout update — no PKCanvasView is create
 | Switch page (tap)      | Tap a side `PageContentView` → `store.switchToPage(at:)`            |
 | Add page (tap)         | Tap dashed "Add Page" card → `store.addPage()`                      |
 | Add page (swipe)       | Swipe left past last page → `store.addPage()`                       |
-| Delete page            | Tap red "Delete" pill on current `PageContentView` → `store.removePage(at:)` |
+| Delete page            | Tap red "Delete" pill on current `PageContentView` → `store.requestDeletePage(at:)` → animated ghost + entry via `PageCarouselView` → `store.confirmPendingDeletion()` → `store.removePage(at:)` |
 
 ## 11. Database / Data Model
 
@@ -541,7 +573,7 @@ These are patterns repeatedly used in the code that future work should follow:
 - **Scribble strokes are not persisted.** `pages[i].scribble` is in‑memory only; closing/reopening the app loses every page's drawing. PencilKit itself could persist via `PKDrawing.dataRepresentation()` if desired.
 - **No image/audio cleanup on page delete.** `CanvasStore.removePage(at:)` removes the `Page` (and its `elements`) but does not delete the underlying files at `Documents/Images/<fileName>` or `Documents/Audio/<fileName>`. Same issue applies to `CanvasStore.remove(id:)` for individual element deletes.
 - **No undo/redo.** Despite PencilKit offering it natively for scribble, the app provides no undo for element moves/resizes/deletes or text edits.
-- **Page deletion is destructive with no confirmation.** The red "Delete" pill on the current page calls `store.removePage(at:)` directly — a single tap destroys a page (and all its elements).
+- **Page deletion is destructive with no confirmation.** The red "Delete" pill on the current page calls `store.requestDeletePage(at:)` which (after the exit animation completes) eventually calls `store.removePage(at:)` directly — a single tap removes a page (and all its elements). The exit animation runs automatically; there's no chance to cancel mid-flight.
 - **Logging is `print`-based** (`print("Failed to save image: …")`, `print("Recording error: …")`, `print("Playback error: …")`). No structured logging, no OSLog.
 - **No localization infrastructure in place.** Strings are inline English literals; `STRING_CATALOG_GENERATE_SYMBOLS = YES` is set but no `.xcstrings` catalog is present yet.
 - **`AudioPlaybackManager` per element.** Each `AudioElementView` creates its own `AudioPlaybackManager`. There's no shared audio session coordinator — playing two audio blocks simultaneously will both set the session to `.playback` and both play at once. The intent is unclear.
@@ -569,7 +601,7 @@ These are patterns repeatedly used in the code that future work should follow:
 MiroCloneApp
    └── JournalView
          ├── CanvasStore                    (created here, passed down)
-         ├── PageCarouselView              ── reads/writes store.pages, store.currentPageIndex; calls store.switchToPage / store.addPage; reports scaled pageSize to store.updateCanvasSize
+         ├── PageCarouselView              ── reads/writes store.pages, store.currentPageIndex, store.pendingDeletion; calls store.requestDeletePage (delete animation) / store.confirmPendingDeletion; reports scaled pageSize to store.updateCanvasSize; drives visualPageIndex from drag and during delete animations, animates on commit
          │     └── PageContentView × (pages.count ± 1)
          │           ├── ScribbleCanvasView       (only when isCurrent)  ── reads/writes store.scribble (current page), store.drawMode; boundPageID + lastAssignedDrawingData track identity + echo
          │           ├── ElementContainerView × N  ── reads/writes store.selectedElementID, store.moveElement, .setWidth, .setHeight, .remove
@@ -577,7 +609,7 @@ MiroCloneApp
          │           │     │     └── AutoGrowingTextView  (UIViewRepresentable)
          │           │     ├── ImageElementView   ── reads store.imagesURL
          │           │     └── AudioElementView   ── reads store.audioURL + own AudioPlaybackManager (AVFoundation)
-         │           └── deleteButton            ── store.removePage(at: pageIndex)
+         │           └── deleteButton            ── store.requestDeletePage(at: pageIndex) (animated)
          ├── PhotosPicker (PhotosUI)        ── on selection: store.addImage(data:)
          └── AudioRecorderSheet              ── on stop: store.addAudio(fileURL:duration:)
                   └── AudioRecorderManager    (AVFoundation, microphone permission)
@@ -596,7 +628,7 @@ Notable: there is **one** store, injected top‑down from `JournalView`. No sing
 
 Read `MiroCloneApp` → it launches a `JournalView`. `JournalView` creates a `CanvasStore` (the brain) and a `NavigationStack` containing a `PageCarouselView` plus a toolbar. The toolbar is the only way new content enters the current page: an Add‑Text button, a `PhotosPicker`, a Mic button (which presents `AudioRecorderSheet`), and a Scribble toggle.
 
-The carousel is the entire board, modeled as a deck of pages. Pages are rendered at paper‑like size (≈ 45% of container width), with the current page centered and the previous / next pages pushed far below — only their top 20% peeks above the container bottom edge, reading as the top of a deck beneath the viewport. Side pages are also slightly smaller (`0.95×`) for a hint of perspective. A dynamic page number sits under each page. The rightmost slot, when on the last page, becomes a dashed "Add Page" card. The current page has a red "Delete" pill at the top. Navigation is by swipe, by tapping a side page, by tapping the Add Page card, or by swiping past the last page. Transitions are driven by a single fractional `visualPageIndex` that springs on commit, making the incoming page visibly rise from its lower side position into the center while the outgoing page falls into the side position — a deck‑of‑cards feel rather than a simple horizontal slide.
+The carousel is the entire board, modeled as a deck of pages. Pages are rendered at paper‑like size (≈ 45% of container width), with the current page centered and the previous / next pages pushed far below — only their top 20% peeks above the container bottom edge, reading as the top of a deck beneath the viewport. Side pages are also slightly smaller (`0.95×`) for a hint of perspective. A dynamic page number sits under each page. The rightmost slot, when on the last page, becomes a dashed "Add Page" card. The current page has a red "Delete" pill at the top. Navigation is by swipe, by tapping a side page, by tapping the Add Page card, or by swiping past the last page. Transitions are driven by a single fractional `visualPageIndex` that springs on commit, making the incoming page visibly rise from its lower side position into the center while the outgoing page falls into the side position — a deck‑of‑cards feel rather than a simple horizontal slide. Tapping Delete on the current page runs the same spring: the page drops and slides slightly outward toward the side opposite the replacement while fading and shrinking, and the replacement page rises from its lower side position into center. After `deleteAnimationDuration = 0.5s` the carousel confirms the deletion, which calls `removePage(at:)` under the hood — the existing array‑mutation semantics are preserved exactly.
 
 Each `PageContentView` renders one page: a paper background, a scribble layer (interactive `PKCanvasView` for the current page, static `UIImage` snapshot for neighbors), and a `ForEach` of `ElementContainerView`s for each element. `PageContentView` owns its own `"canvas"` coordinate space, so element drag math is always in the page's own coordinate system.
 

@@ -19,6 +19,26 @@ struct PageCarouselView: View {
     /// drag; on commit it springs to the new integer (with overshoot).
     @State private var visualPageIndex: CGFloat = 0
 
+    /// Snapshot of the page currently animating out during a delete.
+    /// `nil` when no delete is in flight. The page data is held here so
+    /// the ghost can render even after the page is removed from
+    /// `store.pages`.
+    @State private var exitGhost: CanvasStore.PendingDeletion?
+
+    /// 0 → 1, animates while a delete ghost is on screen. Drives the
+    /// ghost's outward drop, outward slide, fade, and slight shrink.
+    @State private var exitProgress: CGFloat = 0
+
+    /// Slots whose regular `PageContentView` should be hidden (because a
+    /// ghost is animating in their place). Cleared when the delete
+    /// animation completes.
+    @State private var hiddenSlotIndices: Set<Int> = []
+
+    /// Direction the ghost should exit toward. -1 = left, +1 = right.
+    /// 0 = straight down (no horizontal drift). Cached at delete-start
+    /// time so it doesn't drift if `visualPageIndex` keeps moving.
+    @State private var exitDirection: CGFloat = 0
+
     /// Fraction of the container width a single page occupies.
     private let pageWidthFraction: CGFloat = 0.45
     /// Height-to-width ratio of a page (tall sheet of paper).
@@ -61,6 +81,21 @@ struct PageCarouselView: View {
                         containerHeight: geo.size.height
                     )
                 }
+
+                if let ghost = exitGhost {
+                    risingReplacementView(
+                        ghost: ghost,
+                        pageSize: pageSize,
+                        spacing: spacing,
+                        containerHeight: geo.size.height
+                    )
+                    exitGhostView(
+                        ghost: ghost,
+                        pageSize: pageSize,
+                        spacing: spacing,
+                        containerHeight: geo.size.height
+                    )
+                }
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
@@ -87,6 +122,9 @@ struct PageCarouselView: View {
                 } else {
                     visualPageIndex = CGFloat(newValue)
                 }
+            }
+            .onChange(of: store.pendingDeletion) { oldValue, newValue in
+                handlePendingDeletionChange(oldValue: oldValue, newValue: newValue)
             }
         }
         .background(Color(.systemGroupedBackground))
@@ -145,10 +183,15 @@ struct PageCarouselView: View {
     }
 
     /// Picks what to render in a given slot — a real page, the Add Page
-    /// area, or nothing.
+    /// area, or nothing. Slots in `hiddenSlotIndices` (those that are
+    /// currently being animated as part of a delete) render nothing so
+    /// the ghost / rising replacement overlays don't double up with the
+    /// regular slot rendering.
     @ViewBuilder
     private func slotContent(slotIndex: Int, pageSize: CGSize, delta: CGFloat) -> some View {
-        if slotIndex >= 0 && slotIndex < store.pages.count {
+        if hiddenSlotIndices.contains(slotIndex) {
+            EmptyView()
+        } else if slotIndex >= 0 && slotIndex < store.pages.count {
             let isCurrent = abs(delta) < 0.5
             pageStack(
                 page: store.pages[slotIndex],
@@ -274,5 +317,202 @@ struct PageCarouselView: View {
         )) {
             visualPageIndex = CGFloat(store.currentPageIndex)
         }
+    }
+
+    // MARK: - Delete animation
+
+    /// How long the delete animation runs before we confirm the deletion.
+    /// Tuned to roughly match the spring settle time (`response 0.32`,
+    /// `damping 0.62`) plus a small margin for the overshoot.
+    private let deleteAnimationDuration: TimeInterval = 0.5
+
+    /// Extra horizontal drift the ghost travels as it exits, expressed in
+    /// fractions of the page's own width.
+    private let exitHorizontalDistanceFraction: CGFloat = 0.35
+
+    /// Extra vertical drop the ghost travels as it exits, expressed in
+    /// fractions of the page's own height.
+    private let exitVerticalDropFraction: CGFloat = 0.45
+
+    /// Extra shrink the ghost gets as it exits.
+    private let exitShrinkAmount: CGFloat = 0.1
+
+    /// Reacts to `store.pendingDeletion` becoming non-nil (a delete was
+    /// requested) or nil (the carousel has confirmed it and the page is
+    /// gone). Hides the regular slot during the exit, animates the ghost
+    /// outward + down, and springs `visualPageIndex` to the replacement
+    /// index so the replacement page visibly rises into center.
+    private func handlePendingDeletionChange(
+        oldValue: CanvasStore.PendingDeletion?,
+        newValue: CanvasStore.PendingDeletion?
+    ) {
+        if let new = newValue, oldValue == nil {
+            // A new delete just started.
+            beginDeleteAnimation(for: new)
+        } else if newValue == nil, exitGhost != nil {
+            // The carousel previously started a delete; the page has now
+            // been removed from `pages`. Clear local ghost state.
+            exitGhost = nil
+            exitProgress = 0
+            hiddenSlotIndices.removeAll()
+        }
+    }
+
+    /// Begins the delete animation: hide the regular slot at the
+    /// deleted page's index AND the slot where the replacement was
+    /// rendered pre-delete (so the rising replacement overlay doesn't
+    /// double up with the regular slot rendering), freeze an exit
+    /// direction based on which side the replacement page is coming
+    /// from, capture the page data as a ghost, and run the spring
+    /// that animates both the ghost exit and the entry of the
+    /// replacement page.
+    private func beginDeleteAnimation(for pd: CanvasStore.PendingDeletion) {
+        // Exit toward the side OPPOSITE the replacement, so the replacement
+        // can rise unobstructed. If the replacement is on the left
+        // (replacementIndex < originalIndex), the deleted page drifts to the
+        // right (exitDirection = +1). If the replacement is on the right
+        // or stays put, the deleted page drifts to the left
+        // (exitDirection = -1). For the case where original == replacement
+        // (deleting a side page that doesn't change currentPageIndex) fall
+        // back to whichever side the page was on.
+        let direction: CGFloat
+        if pd.replacementIndex < pd.originalIndex {
+            direction = +1
+        } else if pd.replacementIndex > pd.originalIndex {
+            direction = -1
+        } else {
+            direction = pd.originalIndex > Int(visualPageIndex.rounded()) ? +1 : -1
+        }
+        exitDirection = direction
+
+        // Hide the deleted slot and the pre-delete slot of the replacement
+        // so the overlays render them without doubling up.
+        var hidden: Set<Int> = [pd.originalIndex]
+        if let preSlot = risingReplacementPreSlot(for: pd) {
+            hidden.insert(preSlot)
+        }
+        hiddenSlotIndices = hidden
+
+        exitGhost = pd
+
+        let cleanupDelay = deleteAnimationDuration
+        withAnimation(.spring(
+            response: transitionResponse,
+            dampingFraction: transitionDamping
+        )) {
+            // Animate to the replacement index so the post-delete layout
+            // (where the deleted page is gone and the replacement is at
+            // center) is what we settle into.
+            visualPageIndex = CGFloat(pd.replacementIndex)
+            // Animate the ghost outward + downward, and (via the rising
+            // replacement overlay) the replacement into center.
+            exitProgress = 1
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + cleanupDelay) {
+            // Confirm the deletion — this calls removePage(at:) under the
+            // hood and clears pendingDeletion, which triggers the second
+            // branch of handlePendingDeletionChange to clean up local state.
+            store.confirmPendingDeletion()
+        }
+    }
+
+    /// Slot index where the replacement page was rendered pre-delete, or
+    /// nil if there is no replacement to show (single-page delete).
+    private func risingReplacementPreSlot(
+        for pd: CanvasStore.PendingDeletion
+    ) -> Int? {
+        let n = store.pages.count
+        guard n > 1 else { return nil }
+        // The page that becomes current after removal was rendered at
+        // `originalIndex + 1` — unless the deleted page was the last,
+        // in which case the replacement was at `originalIndex - 1`
+        // (the previous page becomes current per the existing rule).
+        if pd.originalIndex == n - 1 {
+            return pd.originalIndex - 1
+        }
+        return pd.originalIndex + 1
+    }
+
+    /// Renders the ghost of the page being deleted. Positioned at its
+    /// original slot, with `exitProgress` driving the outward drop,
+    /// sideways drift, fade, and slight shrink.
+    private func exitGhostView(
+        ghost: CanvasStore.PendingDeletion,
+        pageSize: CGSize,
+        spacing: CGFloat,
+        containerHeight: CGFloat
+    ) -> some View {
+        let delta = CGFloat(ghost.originalIndex) - visualPageIndex
+        let absDelta = min(abs(delta), 1.0)
+
+        let baseX = delta * spacing
+        let baseY = absDelta * neighborVerticalOffset(
+            containerHeight: containerHeight,
+            pageSize: pageSize
+        )
+        let baseScale = 1 - sidePageScale * absDelta
+
+        let exitX = baseX + exitDirection * pageSize.width * exitHorizontalDistanceFraction * exitProgress
+        let exitY = baseY + pageSize.height * exitVerticalDropFraction * exitProgress
+        let exitScale = baseScale - exitShrinkAmount * exitProgress
+        let exitOpacity = 1 - exitProgress
+
+        return pageStack(
+            page: ghost.page,
+            pageIndex: ghost.originalIndex,
+            isCurrent: false,
+            pageSize: pageSize
+        )
+        .offset(x: exitX, y: exitY)
+        .scaleEffect(max(exitScale, 0.01))
+        .opacity(max(exitOpacity, 0))
+        .allowsHitTesting(false)
+    }
+
+    /// Renders the replacement page (the page that will become current
+    /// after the delete) as a separate overlay that rises from its
+    /// pre-delete lower/side position to center. Driven by
+    /// `exitProgress`: 0 = pre-delete (at the side), 1 = post-delete
+    /// (at center, ready to take over as current).
+    @ViewBuilder
+    private func risingReplacementView(
+        ghost: CanvasStore.PendingDeletion,
+        pageSize: CGSize,
+        spacing: CGFloat,
+        containerHeight: CGFloat
+    ) -> some View {
+        if let preSlot = risingReplacementPreSlot(for: ghost),
+           store.pages.indices.contains(preSlot) {
+            let page = store.pages[preSlot]
+
+            // The visual delta at the start of the animation is
+            // (preSlot - originalIndex) since visualPageIndex begins at
+            // originalIndex. As the animation progresses, exitProgress
+            // interpolates the delta toward 0 (center, post-delete).
+            let preDelta = CGFloat(preSlot - ghost.originalIndex)
+            let overlayDelta = preDelta * (1 - exitProgress)
+            let absDelta = abs(overlayDelta)
+
+            let x = overlayDelta * spacing
+            let y = absDelta * neighborVerticalOffset(
+                containerHeight: containerHeight,
+                pageSize: pageSize
+            )
+            let scale = max(1 - sidePageScale * absDelta, 0.01)
+
+            PageContentView(
+                store: store,
+                page: page,
+                pageIndex: ghost.replacementIndex,
+                isCurrent: false,
+                pageSize: pageSize
+            )
+            .offset(x: x, y: y)
+            .scaleEffect(scale)
+            .allowsHitTesting(false)
+        }
+        // Single-page delete (no replacement in `pages`): no rising
+        // overlay — confirmPendingDeletion will snap to the new empty
+        // page after the ghost finishes exiting.
     }
 }

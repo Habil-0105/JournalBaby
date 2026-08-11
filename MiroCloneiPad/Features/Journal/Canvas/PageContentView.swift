@@ -74,7 +74,10 @@ struct PageContentView: View {
 
     private var deleteButton: some View {
         Button {
-            store.removePage(at: pageIndex)
+            // Route through `requestDeletePage` so `PageCarouselView` can
+            // play the exit + entry animation. The actual removal happens
+            // once the carousel confirms the deletion.
+            store.requestDeletePage(at: pageIndex)
         } label: {
             Text("Delete")
                 .font(.subheadline.weight(.medium))
