@@ -10,13 +10,20 @@ struct Page: Identifiable, Equatable {
     var elements: [CanvasElement]
     var scribble: PKDrawing
 
+    /// When this page was created — printed on top of the paper in
+    /// "dd MMMM yyyy" format. Stored per page so each sheet shows its
+    /// own date (not a single shared "today").
+    var createdAt: Date
+
     init(
         id: UUID = UUID(),
         elements: [CanvasElement] = [],
-        scribble: PKDrawing = PKDrawing()
+        scribble: PKDrawing = PKDrawing(),
+        createdAt: Date = Date()
     ) {
         self.id = id
         self.elements = elements
         self.scribble = scribble
+        self.createdAt = createdAt
     }
 }

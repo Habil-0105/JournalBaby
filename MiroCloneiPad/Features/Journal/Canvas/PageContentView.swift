@@ -28,11 +28,17 @@ struct PageContentView: View {
             scribbleLayer
                 .clipShape(RoundedRectangle(cornerRadius: DesignSystem.cornerRadius))
 
+            dateLabel
+
             ForEach(page.elements) { element in
                 ElementContainerView(store: store, element: element)
                     .offset(x: element.position.x, y: element.position.y)
             }
-            .allowsHitTesting(isCurrent && store.writingMode)
+            // Elements are interactive only in writing mode with drawing
+            // OFF. While Scribble is armed the layer above the PKCanvasView
+            // must be inert, otherwise touches over an element would drag /
+            // resize it instead of painting a stroke over it.
+            .allowsHitTesting(isCurrent && store.writingMode && !store.drawMode)
 
             if isCurrent {
                 deleteButton
@@ -102,6 +108,21 @@ struct PageContentView: View {
         let rect = CGRect(origin: .zero, size: pageSize)
         guard !page.scribble.dataRepresentation().isEmpty else { return nil }
         return page.scribble.image(from: rect, scale: UIScreen.main.scale)
+    }
+
+    // MARK: - Date label
+
+    /// The page's creation date printed at the top-center of the paper,
+    /// "dd MMMM yyyy" (e.g. "11 August 2026"). Rendered on every paper —
+    /// current page and carousel neighbors — and scales with the page
+    /// content. Non-hit-testable so it never intercepts touches.
+    private var dateLabel: some View {
+        Text(page.createdAt.formatted(.dateTime.day(.twoDigits).month(.wide).year()))
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 10)
+            .allowsHitTesting(false)
     }
 
     // MARK: - Delete Button
