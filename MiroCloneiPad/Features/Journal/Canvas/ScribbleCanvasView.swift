@@ -40,10 +40,11 @@ struct ScribbleCanvasView: UIViewRepresentable {
         canvasView.minimumZoomScale = 1.0
         canvasView.maximumZoomScale = 1.0
         canvasView.bouncesZoom = false
-        // Carousel mode keeps the PKCanvasView non-interactive so touches
-        // on the small preview page don't leave stray strokes; writing
-        // mode (zoomed in) turns interaction on.
-        canvasView.isUserInteractionEnabled = store.writingMode
+        // The canvas only accepts strokes when the user has deliberately
+        // engaged the Scribble tool (`drawMode`) inside writing mode.
+        // Entering writing mode alone leaves drawing off, so the PencilKit
+        // surface is inert until the toolbar Scribble tool is tapped.
+        canvasView.isUserInteractionEnabled = store.writingMode && store.drawMode
         canvasView.delegate = context.coordinator
         context.coordinator.canvasView = canvasView
         context.coordinator.boundPageID = store.pages.indices.contains(store.currentPageIndex)
@@ -78,7 +79,7 @@ struct ScribbleCanvasView: UIViewRepresentable {
             uiView.drawing = store.scribble
         }
 
-        context.coordinator.setWritingMode(store.writingMode, on: uiView)
+        context.coordinator.setWritingMode(store.writingMode && store.drawMode, on: uiView)
     }
 
     final class Coordinator: NSObject, PKCanvasViewDelegate {

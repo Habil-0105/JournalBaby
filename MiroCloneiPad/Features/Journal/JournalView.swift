@@ -46,6 +46,14 @@ struct JournalView: View {
                     }
 
                     scribbleToolbarButton
+
+                    if store.writingMode {
+                        Button {
+                            store.exitWritingMode()
+                        } label: {
+                            Label("Exit Writing", systemImage: "pencil.tip.crop.circle.badge.minus")
+                        }
+                    }
                 }
             }
             .sheet(isPresented: $showAudioSheet) {
@@ -67,20 +75,31 @@ struct JournalView: View {
         }
     }
 
-    /// The Scribble toolbar button is the entry point into writing mode
-    /// in carousel mode and the exit point while writing. The icon and
-    /// label flip between the two so the affordance is always visible.
+    /// The Scribble toolbar button. In carousel mode it enters writing mode
+    /// AND arms drawing (that's what "Scribble" means — draw now). In writing
+    /// mode it toggles drawing on/off: drawing is opt-in and never engaged
+    /// automatically when entering the mode, so this button is the explicit
+    /// "active drawing tool" selector. Exiting writing mode is a separate,
+    /// always-present button so the user is never left without an exit.
     @ViewBuilder
     private var scribbleToolbarButton: some View {
         if store.writingMode {
             Button {
-                store.exitWritingMode()
+                if store.drawMode {
+                    store.disableDrawing()
+                } else {
+                    store.enableDrawing()
+                }
             } label: {
-                Label("Exit Writing", systemImage: "pencil.tip.crop.circle.badge.minus")
+                Label(
+                    store.drawMode ? "Hide Scribble" : "Scribble",
+                    systemImage: "scribble"
+                )
             }
         } else {
             Button {
                 enterWritingModeIfNeeded()
+                store.enableDrawing()
             } label: {
                 Label("Scribble", systemImage: "scribble")
             }

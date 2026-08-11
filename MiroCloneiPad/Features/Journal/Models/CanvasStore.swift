@@ -96,11 +96,25 @@ final class CanvasStore: ObservableObject {
         }
     }
 
-    func toggleDrawMode() {
-        drawMode.toggle()
-        if drawMode {
+    /// Arms the Scribble / drawing surface inside writing mode: makes the
+    /// `PKCanvasView` interactive and shows the system tool picker. Drawing
+    /// is opt-in — entering writing mode alone does NOT arm it; the user
+    /// must explicitly tap the Scribble tool.
+    func enableDrawing() {
+        guard writingMode, !drawMode else { return }
+        withAnimation(DesignSystem.modeSwitchAnimation) {
+            drawMode = true
             selectedElementID = nil
             focusedTextID = nil
+        }
+    }
+
+    /// Disarms the Scribble / drawing surface, returning to element editing.
+    /// (`select` / `focusText` / `exitWritingMode` also clear `drawMode`.)
+    func disableDrawing() {
+        guard drawMode else { return }
+        withAnimation(DesignSystem.modeSwitchAnimation) {
+            drawMode = false
         }
     }
 
@@ -108,18 +122,17 @@ final class CanvasStore: ObservableObject {
 
     /// Switch from carousel mode to writing mode. The current page is
     /// promoted to a large centered writing canvas; the carousel and page
-    /// strip are hidden; `PKCanvasView` becomes interactive. Selecting
-    /// elements / focusing text are cleared because they don't carry
-    /// across the layout change.
+    /// strip are hidden; element interaction becomes active. `drawMode`
+    /// stays `false` — drawing is never auto-engaged on entry; the toolbar
+    /// Scribble tool must be tapped to arm it. Selecting elements / focusing
+    /// text are cleared because they don't carry across the layout change.
     func enterWritingMode() {
         guard !writingMode else { return }
         withAnimation(DesignSystem.modeSwitchAnimation) {
             writingMode = true
             selectedElementID = nil
             focusedTextID = nil
-            // Mirror what `drawMode` does for the toolbar — turning Scribble on
-            // also implies writing mode.
-            drawMode = true
+            drawMode = false
         }
     }
 
