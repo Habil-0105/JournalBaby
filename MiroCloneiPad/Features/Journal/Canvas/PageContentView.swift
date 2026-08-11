@@ -25,9 +25,9 @@ struct PageContentView: View {
                 ElementContainerView(store: store, element: element)
                     .offset(x: element.position.x, y: element.position.y)
             }
-            .allowsHitTesting(isCurrent && !store.drawMode)
+            .allowsHitTesting(isCurrent && store.writingMode)
 
-            if isCurrent {
+            if isCurrent && !store.writingMode {
                 deleteButton
             }
         }

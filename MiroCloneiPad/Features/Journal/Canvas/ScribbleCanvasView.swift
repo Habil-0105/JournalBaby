@@ -30,16 +30,29 @@ struct ScribbleCanvasView: UIViewRepresentable {
         canvasView.backgroundColor = .clear
         canvasView.isOpaque = false
         canvasView.drawingPolicy = .anyInput // finger + Pencil, like Notes
-        // Draw mode is off by default. Without this the canvas would ship
-        // with its UIKit-default `isUserInteractionEnabled = true`, and
-        // any finger / Pencil touch would draw scribble strokes even though
-        // `store.drawMode` is false (and the tool picker isn't visible).
-        canvasView.isUserInteractionEnabled = store.drawMode
+        // PKCanvasView is a UIScrollView subclass and ships with its own
+        // built-in `UIPinchGestureRecognizer`. In writing mode that
+        // recognizer is fully active and competes with the SwiftUI
+        // `MagnifyGesture` in `WritingCanvasView`, making pinch-out to
+        // exit unreliable (and pinch-in sluggish). Clamp the scroll
+        // view's own zoom range to 1× so its pinch is a no-op and the
+        // SwiftUI gesture gets the pinch cleanly.
+        canvasView.minimumZoomScale = 1.0
+        canvasView.maximumZoomScale = 1.0
+        canvasView.bouncesZoom = false
+        // Carousel mode keeps the PKCanvasView non-interactive so touches
+        // on the small preview page don't leave stray strokes; writing
+        // mode (zoomed in) turns interaction on.
+        canvasView.isUserInteractionEnabled = store.writingMode
         canvasView.delegate = context.coordinator
         context.coordinator.canvasView = canvasView
         context.coordinator.boundPageID = store.pages.indices.contains(store.currentPageIndex)
             ? store.pages[store.currentPageIndex].id
             : nil
+        // Seed the echo-skip memory so PencilKit's first delegate callback
+        // after the programmatic `drawing` assignment doesn't bounce back
+        // and trigger a redundant `@Published` mutation.
+        context.coordinator.lastAssignedDrawingData = store.scribble.dataRepresentation()
         return canvasView
     }
 
@@ -65,7 +78,7 @@ struct ScribbleCanvasView: UIViewRepresentable {
             uiView.drawing = store.scribble
         }
 
-        context.coordinator.setDrawMode(store.drawMode, on: uiView)
+        context.coordinator.setWritingMode(store.writingMode, on: uiView)
     }
 
     final class Coordinator: NSObject, PKCanvasViewDelegate {
@@ -89,7 +102,7 @@ struct ScribbleCanvasView: UIViewRepresentable {
             self.store = store
         }
 
-        func setDrawMode(_ isOn: Bool, on canvasView: PKCanvasView) {
+        func setWritingMode(_ isOn: Bool, on canvasView: PKCanvasView) {
             guard isOn != isShowingToolPicker else { return }
             isShowingToolPicker = isOn
 

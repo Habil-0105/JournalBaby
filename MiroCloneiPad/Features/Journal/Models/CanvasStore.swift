@@ -55,6 +55,14 @@ final class CanvasStore: ObservableObject {
     /// element turns it off.
     @Published var drawMode: Bool = false
 
+    /// When true, the app is in **writing mode**: the carousel layout is
+    /// hidden and the current page is shown as a large centered writing
+    /// canvas (no neighbouring pages, no page strip). Only in writing mode
+    /// does the `PKCanvasView` accept touch input and present the
+    /// PencilKit tool picker. Exiting writing mode returns to carousel
+    /// mode; the current page and its scribble/elements are preserved.
+    @Published var writingMode: Bool = false
+
     /// Size of the canvas content area (from the host GeometryReader).
     /// Used to clamp drags and default placement inside the board.
     @Published private(set) var canvasSize: CGSize = .zero
@@ -94,6 +102,37 @@ final class CanvasStore: ObservableObject {
             selectedElementID = nil
             focusedTextID = nil
         }
+    }
+
+    // MARK: - Writing mode
+
+    /// Switch from carousel mode to writing mode. The current page is
+    /// promoted to a large centered writing canvas; the carousel and page
+    /// strip are hidden; `PKCanvasView` becomes interactive. Selecting
+    /// elements / focusing text are cleared because they don't carry
+    /// across the layout change.
+    func enterWritingMode() {
+        guard !writingMode else { return }
+        writingMode = true
+        selectedElementID = nil
+        focusedTextID = nil
+        // Mirror what `drawMode` does for the toolbar — turning Scribble on
+        // also implies writing mode.
+        drawMode = true
+    }
+
+    /// Switch from writing mode back to carousel mode. Selection / focus
+    /// are cleared (same reason as `switchToPage`). `drawMode` is also
+    /// cleared so the carousel's swipe gesture is enabled again on
+    /// return — without this, the carousel's drag guard
+    /// (`!store.drawMode`) would silently suppress every swipe until
+    /// something else (like `addPage` → `switchToPage`) reset it.
+    func exitWritingMode() {
+        guard writingMode else { return }
+        writingMode = false
+        drawMode = false
+        selectedElementID = nil
+        focusedTextID = nil
     }
 
     // MARK: - Pages

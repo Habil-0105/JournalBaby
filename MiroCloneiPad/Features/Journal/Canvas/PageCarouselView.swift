@@ -101,6 +101,7 @@ struct PageCarouselView: View {
             .clipped()
             .contentShape(Rectangle())
             .gesture(swipeGesture(spacing: spacing))
+            .simultaneousGesture(pinchInToEnterWriting)
             .onAppear {
                 visualPageIndex = CGFloat(store.currentPageIndex)
                 store.updateCanvasSize(pageSize)
@@ -307,6 +308,21 @@ struct PageCarouselView: View {
             }
     }
 
+    /// Pinch gesture that enters writing mode. Magnification **above** 1
+    /// means the user's fingers are spreading apart — the natural
+    /// "zoom in" gesture. Once the spread crosses the threshold we flip
+    /// into writing mode. Combined with the swipe gesture via
+    /// `.simultaneousGesture` so neither blocks the other.
+    private var pinchInToEnterWriting: some Gesture {
+        MagnifyGesture(minimumScaleDelta: 0)
+            .onChanged { value in
+                guard value.magnification > enterWritingPinchThreshold else { return }
+                // Don't double-trigger if we're already in writing mode.
+                guard !store.writingMode else { return }
+                store.enterWritingMode()
+            }
+    }
+
     /// Animates visualPageIndex back to the store's current page index with
     /// the same spring used by onChange. Used when a swipe doesn't commit
     /// (draw-mode cancel, under-threshold release, out-of-bounds swipe).
@@ -325,6 +341,12 @@ struct PageCarouselView: View {
     /// Tuned to roughly match the spring settle time (`response 0.32`,
     /// `damping 0.62`) plus a small margin for the overshoot.
     private let deleteAnimationDuration: TimeInterval = 0.5
+
+    /// Magnification that enters writing mode. A value **above** 1 means
+    /// fingers are spreading apart — the natural "zoom in" gesture that
+    /// brings the user from the carousel preview into the writing canvas.
+    /// Tuned conservatively so casual touches don't accidentally trigger.
+    private let enterWritingPinchThreshold: CGFloat = 1.3
 
     /// Extra horizontal drift the ghost travels as it exits, expressed in
     /// fractions of the page's own width.

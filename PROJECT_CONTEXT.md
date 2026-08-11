@@ -6,11 +6,12 @@
 
 The product surface is intentionally minimal:
 
-- A **horizontal page carousel** (`PageCarouselView`) — pages are rendered at a reduced, paper‑like size, with the previous and next page peeking in on each side and a dynamic page number under each. The rightmost slot, when on the last page, becomes a dashed "Add Page" card.
-- Each page is a freeform canvas (`PageContentView`) where the user places and arranges discrete blocks.
+- The app has **two visual modes** that the user switches between:
+  - **Carousel mode** (preview / browse): a horizontal page carousel (`PageCarouselView`) shows the current page centered with the previous / next pages pushed far below — only their top 20% peeks above the container bottom edge, reading as the top of a deck beneath the viewport. The current page has a red "Delete" pill at the top. Navigation is by swipe, by tapping a side page, by tapping the Add Page card, or by swiping past the last page. Carousel mode is **preview only** — touches on a page don't draw.
+  - **Writing mode** (zoom in): `WritingCanvasView` shows just the current page as a large centered writing canvas (≈ 85% of container width, ≈ 75% of height at the paper aspect ratio, with generous margins on every side). The page strip and all neighbours are completely hidden. The `PKCanvasView` becomes interactive and the system tool picker appears. Enter by tapping any toolbar tool (Scribble / Add Text / Add Image / Add Audio) or by pinching in (fingers spreading); exit by pinching out (fingers closing) or tapping "Exit Writing".
+- **Interaction model.** Carousel mode is **browse only** — pages are preview-only, elements (text / image / audio) are non-interactive, no writing. The only live gestures are the carousel swipe, the pinch-in, and the toolbar. Writing mode is **fully interactive** — the current page's elements can be tapped, dragged, resized, edited, and the `PKCanvasView` accepts scribble strokes. The element `ForEach` in `PageContentView` is gated by `.allowsHitTesting(isCurrent && store.writingMode)`, which is the single source of truth for the mode boundary.
 - Three block kinds: **text** (auto‑growing notes), **image** (from the Photos library), **audio** (microphone recordings).
-- A **Scribble / Draw mode** that drops the user into Apple PencilKit's native `PKCanvasView` with the system `PKToolPicker`, identical to what Notes and Freeform ship.
-- Page navigation is by **swipe** (DragGesture), by tapping a side page, by tapping the dashed "Add Page" card, or by tapping the red "Delete" pill on the current page.
+- A **Scribble / Draw mode** that drops the user into Apple PencilKit's native `PKCanvasView` with the system `PKToolPicker`, identical to what Notes and Freeform ship. This is only active in writing mode.
 
 Each block owns its own position (top‑left) and size on its page. There is no flow layout, no paging, no reflow — moving, adding or deleting a block never affects another block's placement. This is the deliberate design pivot from earlier git history (an earlier "pages" / 2‑page / 3D‑switch design was removed in commits `b87737e`, `d3ecd86`, `99ff378` and re‑introduced as a flatter multi‑page model — see §6/§11).
 
@@ -54,8 +55,9 @@ Each block owns its own position (top‑left) and size on its page. There is no 
 │   │       ├── Canvas/
 │   │       │   ├── PageCarouselView.swift     Horizontal page carousel + swipe nav + add
 │   │       │   ├── PageContentView.swift      One page's surface (current = interactive, neighbors = static preview)
+│   │       │   ├── WritingCanvasView.swift    Writing mode: large centered current page + pinch-out to exit
 │   │       │   ├── ElementContainerView.swift Per‑block chrome: selection, drag, resize handles
-│   │       │   └── ScribbleCanvasView.swift   UIViewRepresentable wrapping PKCanvasView (current page only)
+│   │       │   └── ScribbleCanvasView.swift   UIViewRepresentable wrapping PKCanvasView (interactive only in writing mode)
 │   │       └── Elements/
 │   │           ├── TextElementView.swift      SwiftUI host for AutoGrowingTextView
 │   │           ├── AutoGrowingTextView.swift  UIViewRepresentable wrapping UITextView
@@ -81,12 +83,17 @@ The app is a thin, single‑layer SwiftUI app with one global `ObservableObject`
 
 ```text
 MiroCloneApp (@main)
-   └─► JournalView            (top‑level SwiftUI screen, owns CanvasStore)
-         ├─► PageCarouselView        (horizontal page carousel; swipe / tap navigation; add + delete UX)
-         │     └─► PageContentView × N+1
-         │           ├─► ScribbleCanvasView  (only on the current page; PKCanvasView + toolPicker)
-         │           └─► ElementContainerView × M  (one per CanvasElement on that page)
-         │                 └─► TextElementView | ImageElementView | AudioElementView
+   └─► JournalView            (top-level SwiftUI screen, owns CanvasStore; swaps carousel ↔ writing)
+         ├─► if store.writingMode:
+         │       WritingCanvasView    (large centered current page; PKCanvasView interactive; pinch-out to exit)
+         │         └─► PageContentView
+         │               └─► ScribbleCanvasView  (interactive)
+         │               └─► ElementContainerView × N
+         └─► else (carousel mode):
+                 PageCarouselView        (preview only; PKCanvasView non-interactive; pinch-in to enter writing)
+                   └─► PageContentView × (current + side pages, deep)
+                         ├─► ScribbleCanvasView  (non-interactive; just renders existing strokes)
+                         └─► ElementContainerView × N
          ├─► PhotosPicker (toolbar)
          └─► AudioRecorderSheet (modal)
                   └─► AudioRecorderManager / AudioPlaybackManager (AVFoundation)
@@ -94,10 +101,10 @@ MiroCloneApp (@main)
 
 **Core data flow**
 
-- `CanvasStore` (`@Published` `pages`, `currentPageIndex`, plus UI state `selectedElementID`, `focusedTextID`, `drawMode`, `canvasSize`) is the **single source of truth**.
+- `CanvasStore` (`@Published` `pages`, `currentPageIndex`, `writingMode`, plus UI state `selectedElementID`, `focusedTextID`, `drawMode`, `canvasSize`) is the **single source of truth**. `writingMode` is the new mode switch: when `true`, the app shows the large centered writing canvas (only the current page, `PKCanvasView` interactive); when `false`, the app shows the carousel preview (small current page with side pages deep below, `PKCanvasView` non-interactive). `drawMode` now only mirrors `writingMode` for the toolbar state and is no longer the sole gate on drawing.
 - `elements` and `scribble` on the store are **computed accessors** into `pages[currentPageIndex]` so views keep reading `store.elements` / `store.scribble` without knowing which page is current. `scribble` has a custom setter that writes back to the current page.
 - `PageCarouselView` and every `PageContentView` / `ElementContainerView` observe the store via `@ObservedObject`.
-- All mutations go *into* the store via methods (`addText`, `addImage(data:)`, `addAudio(fileURL:duration:)`, `moveElement`, `setWidth`, `setHeight`, `setTextHeight`, `updateElementText`, `select`, `focusText`, `clearTextFocus`, `toggleDrawMode`, `remove`, `updateCanvasSize`, `addPage`, `switchToPage(at:)`, `removePage(at:)`).
+- All mutations go *into* the store via methods (`addText`, `addImage(data:)`, `addAudio(fileURL:duration:)`, `moveElement`, `setWidth`, `setHeight`, `setTextHeight`, `updateElementText`, `select`, `focusText`, `clearTextFocus`, `toggleDrawMode`, `enterWritingMode`, `exitWritingMode`, `remove`, `updateCanvasSize`, `addPage`, `switchToPage(at:)`, `removePage(at:)`).
 - Position is a **stored** property on `CanvasElement`, not derived — this is what makes "moving one block never affects another" trivially true.
 
 **Concurrency model**
@@ -133,14 +140,15 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 
 - **Purpose:** Single source of truth for the entire journal screen.
 - **Responsibilities:**
-  - Hold `[Page]`, `currentPageIndex`, plus UI‑only state (`selectedElementID`, `focusedTextID`, `drawMode`, `canvasSize`).
+  - Hold `[Page]`, `currentPageIndex`, plus UI‑only state (`selectedElementID`, `focusedTextID`, `drawMode`, `writingMode`, `canvasSize`). `writingMode` is the central mode switch: when `true`, the app shows the large centered writing canvas (only the current page, `PKCanvasView` interactive); when `false`, the carousel preview (small current page with side pages deep below, `PKCanvasView` non‑interactive).
   - Expose `currentPage`, `elements`, and `scribble` as computed accessors so views keep reading `store.elements` / `store.scribble` instead of reaching into a specific page index. `scribble` has a custom setter that writes back to the current page.
   - Add text / image / audio elements (on the current page) with cascading default positions (`nextDefaultPosition`).
   - Manage pages: `addPage()`, `switchToPage(at:)`, `removePage(at:)`. The board always has at least one page; deleting the last one creates a fresh empty replacement. Switching pages clears `selectedElementID`/`focusedTextID`/`drawMode` because those don't carry across.
+  - **Mode switching:** `enterWritingMode()` flips `writingMode = true` (and mirrors `drawMode = true` for the toolbar); `exitWritingMode()` flips `writingMode = false` **and resets `drawMode = false`** so the carousel's swipe guard (`!store.drawMode`) is re‑enabled immediately on return. Both clear `selectedElementID`/`focusedTextID`. Three entry paths into writing mode: (a) pinch-in (fingers spreading) on the carousel (`MagnifyGesture.magnification > enterWritingPinchThreshold = 1.3` in `PageCarouselView`); (b) the Scribble toolbar button; (c) any of the other three toolbar tools (Add Text / Add Image / Add Audio) — every tool tap in carousel mode calls `JournalView.enterWritingModeIfNeeded()` before performing its action, so the new content / picker / sheet always lands on the writing canvas, not the carousel preview. Two exit paths: pinch-out (fingers closing) in `WritingCanvasView` (`MagnifyGesture.magnification < exitPinchThreshold = 0.7`), or the "Exit Writing" toolbar button.
   - Persist image bytes to `Documents/Images/<UUID>.jpg` and audio bytes to `Documents/Audio/<UUID>.m4a`.
   - Move / resize / delete elements, with clamping against `canvasSize` and `DesignSystem.minBlockWidth/minBlockHeight`. Element lookup is currently scoped to the current page.
 - **Depends on:** `Page`, `DesignSystem` (shared), `UIKit` (for `UIImage`), `PencilKit` (for `PKDrawing`).
-- **Consumers:** `JournalView`, `PageCarouselView`, `PageContentView`, `ScribbleCanvasView`, `ElementContainerView`, `TextElementView`, `ImageElementView`, `AudioElementView`, `AudioRecorderSheet`.
+- **Consumers:** `JournalView`, `PageCarouselView`, `WritingCanvasView`, `PageContentView`, `ScribbleCanvasView`, `ElementContainerView`, `TextElementView`, `ImageElementView`, `AudioElementView`, `AudioRecorderSheet`.
 
 - **Animated delete API:** the carousel drives an animated delete via `store.requestDeletePage(at:)` → `store.pendingDeletion` (`@Published` `PendingDeletion?`) → `store.confirmPendingDeletion()`. `confirmPendingDeletion` calls the existing `removePage(at:)` so the array mutation logic is unchanged.
 
@@ -159,12 +167,13 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 
 ### PageCarouselView (`Features/Journal/Canvas/PageCarouselView.swift`)
 
-- **Purpose:** Top‑level horizontal page navigator. Renders prev / current / next pages at a reduced size and handles swipe + tap navigation, add‑page UX, and delete animation.
+- **Purpose:** Top‑level horizontal page navigator used in **carousel mode**. Renders prev / current / next pages at a reduced size and handles swipe + tap navigation, add‑page UX, and delete animation. Pinch-in (fingers spreading) enters writing mode.
 - **Key behaviour:**
   - Computes a scaled `pageSize` from the container: width is min(45% of container width, 70% of container height / 1.3), height = width × 1.3 (tall sheet‑of‑paper aspect). Reports this `pageSize` to `store.updateCanvasSize`.
   - **Resting layout:** current page is centered (offset 0). Previous / next / Add Page slots are pushed down so only the top **20%** of each side page peeks above the container bottom — the current page dominates, side pages read as the top edge of a deck beneath it. Side pages are also slightly smaller (`scaleEffect(0.95)`) for a subtle deck‑of‑cards perspective.
   - **Transitions are driven by `visualPageIndex: CGFloat`.** This is a fractional page index that drives rendering for every slot. At rest it equals `CGFloat(store.currentPageIndex)`; during a swipe it tracks the drag 1:1; on commit it springs to the new integer (with overshoot). Each slot at index `i` computes `delta = i - visualPageIndex`; that single value drives both horizontal offset (`delta * spacing`) and vertical offset (`|delta| * neighborVerticalOffset`, clamped to 1.0).
   - **Swipe gesture** (`DragGesture(minimumDistance: 20)`) updates `visualPageIndex` from drag translation in `onChanged` (no animation, so the drag tracks the finger). In `onEnded`, if the drag crossed 25% of `spacing`, it commits by setting `store.currentPageIndex` (or `store.addPage()` when swiping into the Add Page slot). `onChange(of: store.currentPageIndex)` then animates `visualPageIndex` to the new value with a spring (`response: 0.32s`, `dampingFraction: 0.62` — fast, snappy, small overshoot, quick settle). If the drag didn't commit (under‑threshold release, out‑of‑bounds swipe, draw‑mode cancel), `springVisualToCurrent()` springs `visualPageIndex` back to `currentPageIndex` directly.
+  - **Pinch-in to writing mode** (`MagnifyGesture` attached via `.simultaneousGesture` alongside the swipe): `MagnifyGesture.magnification` is the scale factor between fingers — fingers **spreading** (the natural "zoom in" gesture) drives magnification above 1; when it crosses `enterWritingPinchThreshold = 1.3`, `store.enterWritingMode()` is called. Combined with swipe via `.simultaneousGesture` so neither blocks the other. (Convention note: "pinch-in" here means "spread fingers to zoom in", matching the user's mental model — *not* the literal UIKit "pinch" where fingers close together to zoom out.)
   - **Delete animation.** When `store.pendingDeletion` becomes non‑nil, the carousel:
     1. Computes `exitDirection` from which side the replacement page is coming from (ghost drifts toward the OPPOSITE side).
     2. Adds `originalIndex` and the pre‑delete slot of the replacement to `hiddenSlotIndices` so the regular slot rendering doesn't double up.
@@ -173,20 +182,31 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
     5. Springs `visualPageIndex` to `replacementIndex` and `exitProgress` to 1 with the same `spring(0.32, 0.62)` used by navigation.
     6. After `deleteAnimationDuration = 0.5s` (matching the spring settle), calls `store.confirmPendingDeletion()` which calls `removePage(at:)` and clears `pendingDeletion`. The second branch of `handlePendingDeletionChange` then cleans up `exitGhost`, `exitProgress`, and `hiddenSlotIndices`.
   - For single‑page deletes (only one page in the deck), the replacement is a fresh empty page that doesn't exist in `store.pages` until `confirmPendingDeletion`, so the rising overlay is omitted; the user just sees the ghost fade out and the layout snaps to the new empty page at center.
-- **Layer constants (private):** `pageWidthFraction = 0.45`, `pageAspectRatio = 1.3`, `maxPageHeightFraction = 0.7`, `spacingFactor = 1.15`, `swipeThreshold = 0.25`, `neighborVisibleFraction = 0.2`, `sidePageScale = 0.05`, `transitionResponse = 0.32`, `transitionDamping = 0.62`, `deleteAnimationDuration = 0.5`, `exitHorizontalDistanceFraction = 0.35`, `exitVerticalDropFraction = 0.45`, `exitShrinkAmount = 0.1`.
+- **Layer constants (private):** `pageWidthFraction = 0.45`, `pageAspectRatio = 1.3`, `maxPageHeightFraction = 0.7`, `spacingFactor = 1.15`, `swipeThreshold = 0.25`, `neighborVisibleFraction = 0.2`, `sidePageScale = 0.05`, `transitionResponse = 0.32`, `transitionDamping = 0.62`, `deleteAnimationDuration = 0.5`, `exitHorizontalDistanceFraction = 0.35`, `exitVerticalDropFraction = 0.45`, `exitShrinkAmount = 0.1`, `enterWritingPinchThreshold = 1.3`.
+
+### WritingCanvasView (`Features/Journal/Canvas/WritingCanvasView.swift`)
+
+- **Purpose:** The **writing mode** surface. Shows only the current page, sized larger than the carousel version, with margins on every side. Drawing is enabled; previous/next pages and the page strip are completely hidden. Pinch-out (fingers closing) is the only gesture-driven exit; the "Exit Writing" toolbar button is the other.
+- **Key behaviour:**
+  - Computes a `pageSize` from the container: width = `min(0.85 × containerW, 0.75 × containerH / 1.3)`, height = `width × 1.3`. Significantly larger than the carousel page size (which uses `0.45 × containerW`) but with generous margins on all sides — never edge‑to‑edge.
+  - Renders a single `PageContentView` (with `isCurrent = true`) centered in the container. The page strip is **not** rendered here.
+  - The `PageContentView`'s `ScribbleCanvasView` is interactive (`store.writingMode == true`) — the `PKCanvasView` becomes first responder and the system `PKToolPicker` is shown.
+  - Delete pill is hidden (gated on `!store.writingMode` in `PageContentView`) so the writing canvas isn't cluttered.
+  - **Pinch-out to exit** (`MagnifyGesture`): `MagnifyGesture.magnification` is the scale factor between fingers — fingers **closing** (the natural "zoom out" gesture) drives magnification below 1; when it drops below `exitPinchThreshold = 0.7`, `store.exitWritingMode()` is called. The view is destroyed and `JournalView` swaps back to `PageCarouselView`.
+  - Reports `pageSize` to `store.updateCanvasSize` so element drag/resize clamps match the writing canvas (not the carousel canvas).
 
 ### PageContentView (`Features/Journal/Canvas/PageContentView.swift`)
 
-- **Purpose:** Renders one page: background, scribble layer (interactive or static), elements, and (when `isCurrent`) a delete pill.
+- **Purpose:** Renders one page: background, scribble layer (interactive or static), elements, and (when `isCurrent && !writingMode`) a delete pill.
 - **Key behaviour:**
   - Stack (bottom → top): page background → scribble layer → elements → optional delete pill.
   - **Scribble layer branches on `isCurrent`:**
-    - `isCurrent == true` → `ScribbleCanvasView(store:)` (interactive `PKCanvasView`).
+    - `isCurrent == true` → `ScribbleCanvasView(store:)` (an interactive or non‑interactive `PKCanvasView` depending on `store.writingMode`).
     - `isCurrent == false` → `staticScribbleImage`: a snapshot produced by `page.scribble.image(from: pageSize rect, scale: UIScreen.main.scale)`. Returns `nil` (no image rendered) when the drawing's data is empty.
-  - Element layer: `ForEach(page.elements)` renders each `ElementContainerView` at `element.position`. Hit‑testing is gated to `isCurrent && !drawMode` — neighboring pages are not interactive.
+  - Element layer: `ForEach(page.elements)` renders each `ElementContainerView` at `element.position`. Hit‑testing is gated by `.allowsHitTesting(isCurrent && store.writingMode)` — neighbouring pages are never interactive, **and in carousel mode (`!writingMode`) elements are non-interactive even on the current page**. In writing mode the current page's elements become fully interactive (tap, double-tap, drag, resize handles, delete button). This is the single source of truth for the mode boundary: writing mode = elements live, carousel mode = elements inert.
   - Owns the `"canvas"` coordinate space for its own bounds, so element drag/resize/PencilKit gestures read coordinates already in the page's own coordinate system.
-  - **Delete pill:** red "Delete" `Capsule` button at the top of the current page; tap → `store.requestDeletePage(at: pageIndex)` (which kicks off the animated delete — see §8). No confirmation dialog — destructive and immediate.
-  - Tap on the page background (when current + not drawing) → `store.select(nil)`.
+  - **Delete pill:** red "Delete" `Capsule` button at the top of the current page; only shown when `!store.writingMode`. Tap → `store.requestDeletePage(at: pageIndex)` (which kicks off the animated delete — see §8). No confirmation dialog — destructive and immediate.
+  - Tap on the page background (when current + not drawing + carousel mode) → `store.select(nil)`.
 
 ### ElementContainerView (`Features/Journal/Canvas/ElementContainerView.swift`)
 
@@ -202,14 +222,15 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 
 ### ScribbleCanvasView (`Features/Journal/Canvas/ScribbleCanvasView.swift`)
 
-- **Purpose:** `UIViewRepresentable` wrapping `PKCanvasView`, used only inside the current page's `PageContentView`.
+- **Purpose:** `UIViewRepresentable` wrapping `PKCanvasView`, used inside the current page's `PageContentView` in both carousel and writing mode. In carousel mode it's a non‑interactive preview of the existing strokes; in writing mode it's the live drawing surface with the system tool picker.
 - **Key behaviour:**
-  - When `drawMode == true`: enables interaction, becomes first responder, shows `PKToolPicker`, registers it as observer.
-  - When `drawMode == false`: hides tool picker, resigns first responder, disables interaction. Sits underneath the elements layer.
+  - `canvasView.isUserInteractionEnabled = store.writingMode` — the central mode switch for drawing. Carousel mode is preview‑only; writing mode is interactive.
+  - **Internal zoom is clamped to 1×** in `makeUIView`: `minimumZoomScale = 1.0`, `maximumZoomScale = 1.0`, `bouncesZoom = false`. `PKCanvasView` is a `UIScrollView` subclass and ships with its own `UIPinchGestureRecognizer`; clamping the scroll view's zoom range neutralises that built‑in pinch so the SwiftUI `MagnifyGesture` in `WritingCanvasView` (and `PageCarouselView`) gets the pinch unopposed. Without this clamp, pinch‑out to exit writing mode is unreliable and pinch‑in is sluggish because the UIKit recognizer competes with the SwiftUI gesture.
+  - When `writingMode` flips to true (via `setWritingMode`), the canvas becomes first responder and shows `PKToolPicker`, registered as observer. When it flips to false, the tool picker hides, the canvas resigns, and interaction disables.
   - `drawingPolicy = .anyInput` (finger + Pencil, Notes‑style).
   - Delegate forwards `canvasViewDrawingDidChange` → `store.scribble = canvasView.drawing` (via the `lastAssignedDrawingData` echo‑skip — see below).
   - Tracks `boundPageID` of the drawing currently in the `PKCanvasView`. When `currentPageIndex` changes, `updateUIView` swaps `uiView.drawing = store.scribble`.
-  - **Echo suppression via `lastAssignedDrawingData`:** whenever we programmatically assign a drawing, we stash its `dataRepresentation()`. The next `canvasViewDrawingDidChange` is only skipped when the new `canvasView.drawing` is byte‑equal to that — i.e., PencilKit's echo of our own assignment. Real user strokes are never byte‑equal, so they always reach the store.
+  - **Echo suppression via `lastAssignedDrawingData`:** whenever we programmatically assign a drawing, we stash its `dataRepresentation()`. The next `canvasViewDrawingDidChange` is only skipped when the new `canvasView.drawing` is byte‑equal to that — i.e., PencilKit's echo of our own assignment. Real user strokes are never byte‑equal, so they always reach the store. The Coordinator's memory is also seeded in `makeUIView` so the very first echo after a fresh canvas doesn't bounce back into the store.
 
 ### TextElementView + AutoGrowingTextView (`Features/Journal/Elements/`)
 
@@ -252,7 +273,7 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 | `Features/Journal/Canvas/PageCarouselView.swift` | Horizontal page carousel; swipe / tap navigation; Add Page area on the last position. |
 | `Features/Journal/Canvas/PageContentView.swift` | One page's surface; interactive scribble when current, static image when neighbor; owns the `"canvas"` coordinate space; red Delete pill. |
 | `Features/Journal/Canvas/ElementContainerView.swift` | All per‑block gestures (select, drag, resize, delete). Writes position back to the store on every drag tick. |
-| `Features/Journal/Canvas/ScribbleCanvasView.swift` | PencilKit + system `PKToolPicker` integration; `lastAssignedDrawingData` echo‑skip. |
+| `Features/Journal/Canvas/ScribbleCanvasView.swift` | PencilKit + system `PKToolPicker` integration; `lastAssignedDrawingData` echo‑skip; `PKCanvasView` zoom clamped to 1× so the SwiftUI `MagnifyGesture` in `WritingCanvasView` is unopposed. |
 | `Features/Journal/Elements/AutoGrowingTextView.swift` | Why text height matches content; opt‑in editing; the `sizeThatFits` override. |
 | `Features/Journal/Elements/AudioRecorderSheet.swift` | Microphone permission flow + `AVAudioRecorder` setup. |
 | `Features/Journal/Elements/AudioElementView.swift` | `AVAudioPlayer` + per‑view playback manager. |
@@ -265,11 +286,19 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 
 ```text
 Toolbar tap (JournalView)
+  ── every carousel-mode toolbar tap first calls enterWritingModeIfNeeded()
+     (which calls store.enterWritingMode() if not already in writing mode),
+     THEN performs the tool's normal action — so every new element / picker /
+     sheet lands on the writing canvas, not the carousel preview.
   ├─ text   ─► store.addText()         ─► CanvasElement(kind:.text, position:cascade(), width:360, height:90)
   ├─ image  ─► PhotosPicker           ─► Task { data = await newItem.loadTransferable(type:Data.self) }
   │                                       ─► store.addImage(data:)   ─► write Documents/Images/<UUID>.jpg
   │                                                                          ─► derive height from UIImage aspect ratio
   │                                                                          ─► CanvasElement(kind:.image, …)
+  │   (note: writing-mode entry for the photo path is triggered in the
+  │    onChange(of: photosPickerItem) handler — the moment the user
+  │    commits a photo, the app enters writing mode, then loads bytes
+  │    and calls addImage on the writing canvas)
   └─ audio  ─► AudioRecorderSheet     ─► AudioRecorderManager.stop()
                                           ─► store.addAudio(fileURL:duration:)
                                               ─► copy temp .m4a → Documents/Audio/<UUID>.m4a
@@ -277,7 +306,9 @@ Toolbar tap (JournalView)
                   ▼
               store.selectedElementID = newElement.id        (each add auto‑selects)
                   ▼
-              PageCarouselView re-renders (PageContentView for current page picks up the new element)
+              PageContentView re-renders (current page picks up the new element; in writing
+              mode the new element is immediately hit-testable, in carousel mode it appears
+              as a non-interactive preview)
 ```
 
 ### Dragging a block
@@ -411,14 +442,24 @@ AudioElementView "play" button
 ### Pencil / Scribble
 
 ```text
-Toggle Scribble toolbar button
-  ─► store.toggleDrawMode() ─► drawMode = true, selectedElementID = nil, focusedTextID = nil
-        ─► ScribbleCanvasView.setDrawMode(true, on:)
-              ─► toolPicker.addObserver / setVisible(true, forFirstResponder:)
-              ─► PKCanvasView.becomeFirstResponder()      (system tool picker appears)
-        ─► canvasViewDrawingDidChange
-              ─► if drawing byte-equals lastAssignedDrawingData → echo, skip
-              ─► else → store.scribble = canvasView.drawing
+Carousel mode → enter writing mode
+  Three equivalent paths:
+    • pinch-in (fingers spreading) on the carousel page ─► store.enterWritingMode()
+    • tap Scribble toolbar button                       ─► store.enterWritingMode()
+    • tap any other toolbar tool (Add Text/Image/Audio) ─► JournalView.enterWritingModeIfNeeded()
+                                                          then the tool's normal action runs
+Writing mode → exit writing mode
+  Two equivalent paths:
+    • pinch-out (fingers closing) on the writing canvas ─► store.exitWritingMode()
+    • tap "Exit Writing" toolbar button                 ─► store.exitWritingMode()
+
+In writing mode (store.writingMode == true):
+  ─► ScribbleCanvasView.setDrawMode(true, on:)
+        ─► toolPicker.addObserver / setVisible(true, forFirstResponder:)
+        ─► PKCanvasView.becomeFirstResponder()      (system tool picker appears)
+  ─► canvasViewDrawingDidChange
+        ─► if drawing byte-equals lastAssignedDrawingData → echo, skip
+        ─► else → store.scribble = canvasView.drawing
 
 Toggle off  ─► toolPicker hidden, PKCanvasView resigns first responder, interaction disabled,
                element layer becomes hit‑testable again.
@@ -440,7 +481,7 @@ This means switching pages is just a layout update — no PKCanvasView is create
 2. **Drag writes on every tick, not on commit.** The drag's `onChanged` calls `store.moveElement` with the current `start + translation`, so model / visual / hit‑test rectangle are always in lockstep — no temporary visual offset to reconcile on `onEnded`.
 3. **Cascading default placement for new blocks.** `nextDefaultPosition()` is a creation‑time convenience (`(inset + col*spacing, inset + row*spacing)`); once created, the element owns its position.
 4. **The board renders at a fixed 1:1 scale.** There is no zoom or pan. Element drag, width/height handles, and PencilKit touches all read the `"canvas"` named coordinate space directly. Because `PageCarouselView` reports a *scaled-down* `pageSize` (≈ 45% of container width) to `store.updateCanvasSize`, the effective element coordinate space is also that scaled size — element positions are clamped against the page's own size, not the screen's.
-5. **Draw mode is exclusive.** Selecting any element exits Draw mode; toggling Draw mode clears selection and text focus. Elements are non‑interactive while Draw mode is on.
+  5. **Mode boundary is the single gate on element interaction.** The element `ForEach` in `PageContentView` is gated by `.allowsHitTesting(isCurrent && store.writingMode)`. In carousel mode (`!writingMode`) no element on the current page is hit-testable — taps, double-taps, drags, and resize handles all fall through to the parent carousel (where the swipe and pinch-in gestures live). In writing mode the same elements are fully interactive. `drawMode` is no longer the gate; it only mirrors `writingMode` for the toolbar and is reset by `exitWritingMode()` so the carousel's swipe guard (`!store.drawMode`) re-enables on return.
 6. **Text editing is opt‑in and isolated.** A text block is draggable when *not* focused, so caret/selection gestures always win during editing. Height is auto‑measured (`AutoGrowingTextView.sizeThatFits` + `recalculateHeight` → `store.setTextHeight`).
 7. **Scribble strokes live in their own layer.** `store.scribble: PKDrawing` is independent of `elements`; PencilKit is the source of truth while Draw mode is on. Only the current page instantiates a `PKCanvasView`; neighbor pages render their scribbles as a static `UIImage` snapshot.
 8. **Block content lives in the Documents directory.** Image bytes are written directly into `Documents/Images/<UUID>.jpg`; audio is copied from a temp recording into `Documents/Audio/<UUID>.m4a`. The `CanvasElement` stores only the file name.
@@ -457,21 +498,25 @@ This means switching pages is just a layout update — no PKCanvasView is create
 
 | Action surface         | Code path                                                          |
 |------------------------|--------------------------------------------------------------------|
-| Add text               | `JournalView` toolbar → `store.addText()`                          |
-| Add image              | `PhotosPicker` → `Task { await loadTransferable(type:Data.self) }` → `store.addImage(data:)` |
-| Add audio              | `AudioRecorderSheet` → `AudioRecorderManager.stop()` → `store.addAudio(fileURL:duration:)` |
-| Toggle Scribble        | `store.toggleDrawMode()` → `ScribbleCanvasView.setDrawMode(_:on:)` |
-| Select element         | `store.select(id)`                                                  |
-| Edit text              | double‑tap → `store.focusText(id)`                                  |
-| Move element           | drag → `store.moveElement(id, to:)`                                |
-| Resize element         | width/height handle drag → `store.setWidth` / `setHeight`          |
+| Add text               | `JournalView` toolbar → `enterWritingModeIfNeeded()` → `store.addText()` |
+| Add image              | `PhotosPicker` → `onChange(of: photosPickerItem)` → `enterWritingModeIfNeeded()` → `Task { await loadTransferable(type:Data.self) }` → `store.addImage(data:)` |
+| Add audio              | `JournalView` toolbar → `enterWritingModeIfNeeded()` → `showAudioSheet = true` → `AudioRecorderSheet` → `AudioRecorderManager.stop()` → `store.addAudio(fileURL:duration:)` |
+| Toggle Scribble (entry) | Scribble toolbar button in carousel mode → `enterWritingModeIfNeeded()` → `store.enterWritingMode()` |
+| Toggle Exit Writing     | Exit Writing toolbar button in writing mode → `store.exitWritingMode()` |
+| Select element         | tap (writing mode only) → `store.select(id)`                       |
+| Edit text              | double-tap (writing mode only) → `store.focusText(id)`             |
+| Move element           | drag (writing mode only) → `store.moveElement(id, to:)`            |
+| Resize element         | width/height handle drag (writing mode only) → `store.setWidth` / `setHeight` |
 | Auto‑resize text       | `AutoGrowingTextView` → `store.setTextHeight(id, height:)`         |
-| Delete element         | delete button → `store.remove(id)`                                  |
+| Delete element         | delete button (writing mode only) → `store.remove(id)`             |
 | Switch page (swipe)    | `PageCarouselView` `DragGesture` → `store.switchToPage(at:)` / `store.addPage()` (past last) |
 | Switch page (tap)      | Tap a side `PageContentView` → `store.switchToPage(at:)`            |
 | Add page (tap)         | Tap dashed "Add Page" card → `store.addPage()`                      |
 | Add page (swipe)       | Swipe left past last page → `store.addPage()`                       |
-| Delete page            | Tap red "Delete" pill on current `PageContentView` → `store.requestDeletePage(at:)` → animated ghost + entry via `PageCarouselView` → `store.confirmPendingDeletion()` → `store.removePage(at:)` |
+| Delete page            | Tap red "Delete" pill on current `PageContentView` (carousel mode) → `store.requestDeletePage(at:)` → animated ghost + entry via `PageCarouselView` → `store.confirmPendingDeletion()` → `store.removePage(at:)` |
+| Enter writing mode     | Pinch-in (fingers spreading, `magnification > 1.3`) on the carousel **OR** tap ANY toolbar tool (Scribble / Add Text / Add Image / Add Audio) → `store.enterWritingMode()` |
+| Exit writing mode      | Pinch-out (fingers closing, `magnification < 0.7`) in `WritingCanvasView` **OR** tap "Exit Writing" toolbar button → `store.exitWritingMode()` |
+| Draw / erase           | In writing mode: touch / Pencil on `PKCanvasView` → `store.scribble = canvasView.drawing` |
 
 ## 11. Database / Data Model
 
@@ -554,15 +599,19 @@ There is no `lint`, `format`, or `test` step wired into the project. There is no
 These are patterns repeatedly used in the code that future work should follow:
 
 1. **Store as the single source of truth.** Every state change goes through a `CanvasStore` method; views never mutate `CanvasElement` or `Page` directly. (`ElementContainerView` writes only via `store.moveElement`, `store.setWidth`, etc.)
-2. **Stored position, no derived layout.** New block kinds or layout strategies should keep position stored on the element. Resist any "reflow on neighbour change" temptation.
-3. **Drag‑writes‑on‑every‑tick.** Gestures that change geometry should update the model on `onChanged`, not on `onEnded` (matches `ElementContainerView.moveGesture`). This keeps the visual frame, hit test, and model position identical at all times.
-4. **DesignSystem is the only place for sizing tokens.** Don't hardcode `cornerRadius`, `minBlockWidth`, padding, etc. in views.
-5. **UIViewRepresentable wrappers are the bridge, not the model.** `AutoGrowingTextView` and `ScribbleCanvasView` are intentionally thin; all state lives in `CanvasStore` and is mirrored via delegate callbacks.
-6. **Coordinate space per-page.** `PageContentView` declares `.coordinateSpace(.named("canvas"))`. Drag gestures inside `ElementContainerView` rely on this to read coordinates already in the page's own coordinate system. Don't move the declaration or wrap the page in a `scaleEffect` / `offset` modifier — element drag math is written against the page's 1:1 frame.
-7. **Opt‑in editing for text blocks.** Anything that involves the caret / selection must check `isFocused` first so drag can take over otherwise.
-8. **File‑backed content, name in the model.** Heavy media lives in `Documents/Images` / `Documents/Audio`; the `CanvasElement` only stores a filename. Future media kinds should follow the same pattern.
-9. **Concurrency isolation.** Because `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, prefer keeping work on the main actor. The only off‑main work today is the `Task` around `PhotosPickerItem.loadTransferable`.
-10. **No third‑party dependencies.** The project intentionally has none; don't add a SPM dependency for something SwiftUI/AVFoundation/PencilKit already covers.
+2. **Mode separation (carousel vs writing).** Carousel mode is **browse only** — `PKCanvasView.isUserInteractionEnabled` is `false` (no strokes), and the element `ForEach` in `PageContentView` is gated `.allowsHitTesting(isCurrent && store.writingMode)` so all element gestures (tap, double-tap, drag, resize, delete) are inert. Writing mode is the only place the current page is interactive: `PKCanvasView` accepts strokes and the element layer is hit-testable. **Entry paths into writing mode:** pinch-in (fingers spreading, `magnification > 1.3`) on the carousel, the Scribble toolbar button, OR any of the other three toolbar tools (Add Text / Add Image / Add Audio) — every tool tap in carousel mode calls `JournalView.enterWritingModeIfNeeded()` before performing its action. **Exit paths:** pinch-out (fingers closing, `magnification < 0.7`) in `WritingCanvasView`, or the "Exit Writing" toolbar button. `writingMode` is the central switch — don't bypass it by gating on `drawMode` alone.
+3. **Stored position, no derived layout.** New block kinds or layout strategies should keep position stored on the element. Resist any "reflow on neighbour change" temptation.
+4. **Drag‑writes‑on‑every‑tick.** Gestures that change geometry should update the model on `onChanged`, not on `onEnded` (matches `ElementContainerView.moveGesture`). This keeps the visual frame, hit test, and model position identical at all times.
+5. **DesignSystem is the only place for sizing tokens.** Don't hardcode `cornerRadius`, `minBlockWidth`, padding, etc. in views.
+6. **UIViewRepresentable wrappers are the bridge, not the model.** `AutoGrowingTextView` and `ScribbleCanvasView` are intentionally thin; all state lives in `CanvasStore` and is mirrored via delegate callbacks.
+7. **Coordinate space per-page.** `PageContentView` declares `.coordinateSpace(.named("canvas"))`. Drag gestures inside `ElementContainerView` rely on this to read coordinates already in the page's own coordinate system. Don't move the declaration or wrap the page in a `scaleEffect` / `offset` modifier — element drag math is written against the page's 1:1 frame.
+8. **Opt‑in editing for text blocks.** Anything that involves the caret / selection must check `isFocused` first so drag can take over otherwise.
+9. **File‑backed content, name in the model.** Heavy media lives in `Documents/Images` / `Documents/Audio`; the `CanvasElement` only stores a filename. Future media kinds should follow the same pattern.
+10. **Concurrency isolation.** Because `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, prefer keeping work on the main actor. The only off‑main work today is the `Task` around `PhotosPickerItem.loadTransferable`.
+11. **No third‑party dependencies.** The project intentionally has none; don't add a SPM dependency for something SwiftUI/AVFoundation/PencilKit already covers.
+12. **Mode transitions must reset every UI gate the previous mode set.** `enterWritingMode()` sets `drawMode = true`; `exitWritingMode()` must clear it. Same pattern for any future mode flag: entering a mode is paired with exiting. The carousel's swipe guard (`!store.drawMode`) is what made the omission user‑visible — keep that invariant whenever you add a new mode‑gated state.
+13. **`PKCanvasView` zoom must stay clamped to 1×.** `PKCanvasView` inherits from `UIScrollView`; its built‑in `UIPinchGestureRecognizer` will fight any SwiftUI `MagnifyGesture` overlay. The clamp is set in `ScribbleCanvasView.makeUIView` and must not be removed unless the SwiftUI pinch gestures are removed too.
+14. **`MagnifyGesture.magnification` is the *scale* factor between fingers, not a zoom ratio relative to the screen.** Fingers spreading apart → magnification > 1 (the natural "zoom in" gesture). Fingers closing together → magnification < 1 (the natural "zoom out" gesture). When wiring any new pinch entry/exit for the mode switch, "zoom in to enter writing mode" means triggering on `magnification > threshold` (fingers spreading), and "zoom out to exit writing mode" means triggering on `magnification < threshold` (fingers closing). Don't confuse the two directions.
 
 ## 18. Known Issues / Technical Debt
 
@@ -579,6 +628,12 @@ These are patterns repeatedly used in the code that future work should follow:
 - **`AudioPlaybackManager` per element.** Each `AudioElementView` creates its own `AudioPlaybackManager`. There's no shared audio session coordinator — playing two audio blocks simultaneously will both set the session to `.playback` and both play at once. The intent is unclear.
 - **Carousel reports a scaled-down `canvasSize` to the store.** Because `PageCarouselView` calls `store.updateCanvasSize(pageSize)` with the paper‑like size (≈ 45% of container width), element drag/resize clamping uses that small size. Elements placed near the "right" edge of the user's view will hit the `canvasSize.width - element.width` clamp before reaching the visible page edge. The user has no visual cue that the coordinate space ends before the visible page does.
 - **Neighboring pages re-render their static scribble image on every render.** `PageContentView.staticScribbleImage` calls `page.scribble.image(from:scale:)` per body evaluation. PencilKit's `PKDrawing.image(from:scale:)` is not free; on a 5‑page board this fires 4× per SwiftUI invalidation.
+
+### Resolved
+
+- **Pinch direction was inverted between modes; only Scribble entered writing mode; elements remained interactive in carousel mode** (fixed). Four related defects in the Carousel ↔ Writing mode boundary: (1) `MagnifyGesture.magnification < 0.7` on the carousel (fingers closing, the natural "zoom out") was triggering entry into writing mode, and `magnification > 1.35` in `WritingCanvasView` (fingers spreading, the natural "zoom in") was triggering exit — i.e. the directions were swapped. Fixed by flipping the comparisons and thresholds to `> 1.3` for entry (fingers spreading = zoom in) and `< 0.7` for exit (fingers closing = zoom out). (2) Only the Scribble toolbar button called `store.enterWritingMode()`; tapping Add Text / Add Image / Add Audio just performed their action in carousel mode. Fixed by adding `JournalView.enterWritingModeIfNeeded()` and calling it from every carousel-mode toolbar button before its action (and from the `onChange(of: photosPickerItem)` handler so a picked photo also enters writing mode). (3) The element `ForEach` in `PageContentView` was gated `.allowsHitTesting(isCurrent && !store.drawMode)` — in writing mode `drawMode` is `true`, so elements were *non-interactive* even there, but the user couldn't reach that state in practice because of bug (1). In carousel mode the same gate left elements *fully interactive* on the current page, contradicting the "carousel = browse only" rule. Fixed by replacing the condition with `isCurrent && store.writingMode` — writing mode is now the sole gate, elements are live in writing mode and inert in carousel mode. The carousel's own swipe and pinch-in gestures live on the parent ZStack in `PageCarouselView`, so disabling element hit testing does not block carousel navigation. (4) The pencil-only entry path is no longer the sole way to reach the writing canvas; any toolbar tool tap is.
+- **Carousel swipe unresponsive on first return from Writing Mode** (fixed). `exitWritingMode()` previously only cleared `selectedElementID` / `focusedTextID`; `drawMode` stayed `true` from `enterWritingMode()`. Because `PageCarouselView.swipeGesture` is gated on `!store.drawMode`, every drag was silently dropped after the first return from writing mode. The bug only "fixed itself" when the user added a page because `addPage()` → `switchToPage(at:)` explicitly resets `drawMode = false`. The fix is one line in `CanvasStore.exitWritingMode()`: now clears `drawMode` together with `writingMode` and the other UI state, so the carousel's swipe is immediately enabled on return from writing mode.
+- **Pinch-out (zoom out) to exit writing mode unreliable; pinch-in sluggish** (fixed). `PKCanvasView` inherits from `UIScrollView` and ships with its own `UIPinchGestureRecognizer`. In writing mode the canvas is `isUserInteractionEnabled = true`, so that built‑in UIKit pinch recognizer was active and competing with the SwiftUI `MagnifyGesture` in `WritingCanvasView`. The fix in `ScribbleCanvasView.makeUIView` clamps `minimumZoomScale = 1.0`, `maximumZoomScale = 1.0`, `bouncesZoom = false` on the `PKCanvasView`, neutralising the UIKit pinch so the SwiftUI gesture gets the pinch unopposed. Both pinch‑in (carousel) and pinch‑out (writing) now feel reliable.
 
 ### Likely
 
@@ -626,13 +681,15 @@ Notable: there is **one** store, injected top‑down from `JournalView`. No sing
 
 ## 20. Key Mental Model
 
-Read `MiroCloneApp` → it launches a `JournalView`. `JournalView` creates a `CanvasStore` (the brain) and a `NavigationStack` containing a `PageCarouselView` plus a toolbar. The toolbar is the only way new content enters the current page: an Add‑Text button, a `PhotosPicker`, a Mic button (which presents `AudioRecorderSheet`), and a Scribble toggle.
+Read `MiroCloneApp` → it launches a `JournalView`. `JournalView` creates a `CanvasStore` (the brain) and a `NavigationStack` whose body swaps between two views based on `store.writingMode`: `PageCarouselView` (carousel mode) or `WritingCanvasView` (writing mode). The toolbar adds new content (Add‑Text, `PhotosPicker`, Mic → `AudioRecorderSheet`) and acts as the entry / exit for writing mode (Scribble button).
 
-The carousel is the entire board, modeled as a deck of pages. Pages are rendered at paper‑like size (≈ 45% of container width), with the current page centered and the previous / next pages pushed far below — only their top 20% peeks above the container bottom edge, reading as the top of a deck beneath the viewport. Side pages are also slightly smaller (`0.95×`) for a hint of perspective. A dynamic page number sits under each page. The rightmost slot, when on the last page, becomes a dashed "Add Page" card. The current page has a red "Delete" pill at the top. Navigation is by swipe, by tapping a side page, by tapping the Add Page card, or by swiping past the last page. Transitions are driven by a single fractional `visualPageIndex` that springs on commit, making the incoming page visibly rise from its lower side position into the center while the outgoing page falls into the side position — a deck‑of‑cards feel rather than a simple horizontal slide. Tapping Delete on the current page runs the same spring: the page drops and slides slightly outward toward the side opposite the replacement while fading and shrinking, and the replacement page rises from its lower side position into center. After `deleteAnimationDuration = 0.5s` the carousel confirms the deletion, which calls `removePage(at:)` under the hood — the existing array‑mutation semantics are preserved exactly.
+The carousel is the entire board in **carousel mode**, modeled as a deck of pages. Pages are rendered at paper‑like size (≈ 45% of container width), with the current page centered and the previous / next pages pushed far below — only their top 20% peeks above the container bottom edge, reading as the top of a deck beneath the viewport. Side pages are also slightly smaller (`0.95×`) for a hint of perspective. A dynamic page number sits under each page. The rightmost slot, when on the last page, becomes a dashed "Add Page" card. The current page has a red "Delete" pill at the top. Navigation is by swipe, by tapping a side page, by tapping the Add Page card, or by swiping past the last page. Transitions are driven by a single fractional `visualPageIndex` that springs on commit, making the incoming page visibly rise from its lower side position into the center while the outgoing page falls into the side position — a deck‑of‑cards feel rather than a simple horizontal slide. Tapping Delete on the current page runs the same spring: the page drops and slides slightly outward toward the side opposite the replacement while fading and shrinking, and the replacement page rises from its lower side position into center. After `deleteAnimationDuration = 0.5s` the carousel confirms the deletion, which calls `removePage(at:)` under the hood — the existing array‑mutation semantics are preserved exactly. In carousel mode, **drawing is disabled**: the `PKCanvasView` underneath the current page is `isUserInteractionEnabled = false`, so a Pencil/finger stroke on the small page preview does nothing.
 
-Each `PageContentView` renders one page: a paper background, a scribble layer (interactive `PKCanvasView` for the current page, static `UIImage` snapshot for neighbors), and a `ForEach` of `ElementContainerView`s for each element. `PageContentView` owns its own `"canvas"` coordinate space, so element drag math is always in the page's own coordinate system.
+In **writing mode**, `JournalView` swaps in `WritingCanvasView`, which renders a single `PageContentView` at writing‑canvas size (≈ 85% of container width × 75% of height at paper aspect 1.3). The page strip, neighbours, and delete pill are all hidden; the `PKCanvasView` becomes first responder with the system `PKToolPicker` visible. The user can write / erase / use any PencilKit tool. The only way out is pinch‑out (which calls `store.exitWritingMode()`, tearing the writing canvas down and returning to the carousel) or the "Exit Writing" toolbar button. `store.canvasSize` is updated to the writing page size while in this mode, so element drag/resize clamps match the writing canvas.
 
-The store holds a list of `Page`s and a `currentPageIndex`. Every `elements` / `scribble` read or write goes through the current page — views don't know which page is current, only the store does. UI‑only state (selection, text focus, draw mode, canvas size) is global because it follows the user, not the page; switching pages clears it. The board always has at least one page; deleting the only one inserts a fresh empty replacement.
+Each `PageContentView` renders one page: a paper background, a scribble layer (interactive `PKCanvasView` for the current page, static `UIImage` snapshot for neighbors), and a `ForEach` of `ElementContainerView`s for each element. `PageContentView` owns its own `"canvas"` coordinate space, so element drag math is always in the page's own coordinate system. Element hit‑testing is gated to `isCurrent && !drawMode`, so in writing mode (where `drawMode` is forced `true`) the page is purely a writing surface — text/image/audio elements are non‑interactive there.
+
+The store holds a list of `Page`s and a `currentPageIndex`. Every `elements` / `scribble` read or write goes through the current page — views don't know which page is current, only the store does. UI‑only state (selection, text focus, draw mode, canvas size, writing mode) is global because it follows the user, not the page; switching pages or entering/exiting writing mode clears selection/focus.
 
 The store owns geometry. The `ElementContainerView`'s drag gesture does not maintain a "visual offset" — it computes the new top‑left point on every frame and writes it straight to `store.moveElement(_:to:)`, so the model is always the truth and there is nothing to reconcile. Resize handles work the same way. Text editing is opt‑in: a double‑tap focuses a block, a `UITextView` becomes the first responder, every change bubbles a measured height back so the block's frame matches the actual text.
 
@@ -640,22 +697,27 @@ When the user switches pages, `ScribbleCanvasView` swaps `uiView.drawing` to the
 
 Media content is stored as files in the app sandbox — `Documents/Images/<UUID>.jpg` and `Documents/Audio/<UUID>.m4a` — with only the filename kept on the element. Audio playback is per‑element via `AVAudioPlayer`; audio capture is a modal sheet driven by `AVAudioRecorder`. Drawing is a `PKDrawing` mirrored between PencilKit and the store via a delegate, scoped to the current page.
 
-There is one screen, one store, no network, no database, no third‑party dependencies. Everything is local, observable, and reactive.
+There is one screen, one store, no network, no database, no third‑party dependencies. Everything is local, observable, and reactive. The two modes (carousel and writing) are mutually exclusive — the user toggles between them with explicit gestures or toolbar buttons.
 
 ## 21. Confidence & Unknowns
 
 ### Confirmed
 
-- All Swift source files in `MiroCloneiPad/` were read end‑to‑end (18 files: the original 16, plus `Page.swift`, `PageCarouselView.swift`, and `PageContentView.swift`; the legacy `FreeformCanvasView.swift` and `PageStripView.swift` were removed in a cleanup pass).
+- All Swift source files in `MiroCloneiPad/` were read end‑to‑end (19 files: the original 16, plus `Page.swift`, `PageCarouselView.swift`, `PageContentView.swift`, and `WritingCanvasView.swift`; the legacy `FreeformCanvasView.swift` and `PageStripView.swift` were removed in a cleanup pass).
 - Build is clean (`xcodebuild` succeeds; only the pre-existing `requestRecordPermission` deprecation warning).
-- `JournalView`'s body is `PageCarouselView` (confirmed by reading `JournalView.swift`).
+- `JournalView`'s body swaps between `PageCarouselView` (carousel mode) and `WritingCanvasView` (writing mode) based on `store.writingMode` (confirmed by reading `JournalView.swift`).
+- `writingMode` is the central mode switch: true → writing canvas (large centered current page, `PKCanvasView` interactive), false → carousel preview (small pages with deep neighbours, `PKCanvasView` non-interactive).
+- Writing mode is entered via the Scribble toolbar button or `MagnifyGesture` (magnification < 0.7) on `PageCarouselView`; exited via the "Exit Writing" toolbar button or `MagnifyGesture` (magnification > 1.35) on `WritingCanvasView`.
+- `exitWritingMode()` clears `writingMode`, `drawMode`, `selectedElementID`, and `focusedTextID` — so the carousel's swipe guard (`!store.drawMode`) is re‑enabled on the very first return from writing mode (the original bug was that `drawMode` was not reset, silently suppressing every swipe until the user added a page).
 - `PageContentView` declares the `"canvas"` coordinate space per-page.
-- `ScribbleCanvasView` uses `lastAssignedDrawingData: Data?` for echo‑skipping (verified by reading `ScribbleCanvasView.swift`).
+- `ScribbleCanvasView` uses `lastAssignedDrawingData: Data?` for echo‑skipping (verified by reading `ScribbleCanvasView.swift`); `makeUIView` seeds it so the first echo after a fresh canvas doesn't bounce back into the store.
+- `ScribbleCanvasView.makeUIView` clamps `minimumZoomScale = 1.0`, `maximumZoomScale = 1.0`, `bouncesZoom = false` on the underlying `PKCanvasView` to neutralise its built‑in `UIScrollView` `UIPinchGestureRecognizer`. Without this clamp, the UIKit recognizer competed with the SwiftUI `MagnifyGesture` in `WritingCanvasView` and made pinch‑out unreliable / pinch‑in sluggish.
 - App entry point is `MiroCloneApp` (`@main`, `WindowGroup { JournalView() }`).
-- `CanvasStore` is the single `ObservableObject` driving the entire UI; it holds `[Page]` plus UI‑only state (`selectedElementID`, `focusedTextID`, `drawMode`, `canvasSize`).
+- `CanvasStore` is the single `ObservableObject` driving the entire UI; it holds `[Page]` plus UI‑only state (`selectedElementID`, `focusedTextID`, `drawMode`, `writingMode`, `canvasSize`).
 - `elements` and `scribble` on the store are computed accessors into `pages[currentPageIndex]`.
 - Three element kinds: `.text`, `.image`, `.audio` (via `ElementKind` enum).
 - Multi‑page behavior: app starts with one empty page, `addPage()` appends, `removePage(at:)` removes (no confirmation in the new design) and falls back to an empty page if the last one is deleted, `switchToPage(at:)` clears selection/focus/draw mode.
+- `deletePage(at:)` is animated via `requestDeletePage(at:)` + `confirmPendingDeletion()` with the carousel ghost + rising replacement pattern.
 - Media persistence path: `Documents/Images/` and `Documents/Audio/` (`CanvasStore.imagesURL` / `audioURL`).
 - `CanvasElement` is `Codable` but `CanvasStore.pages` is **not currently persisted** across launches.
 - No test target, no third‑party dependencies.
