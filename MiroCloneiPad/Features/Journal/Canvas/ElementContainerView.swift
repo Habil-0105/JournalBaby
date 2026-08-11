@@ -51,12 +51,10 @@ struct ElementContainerView: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: DesignSystem.cornerRadius)
-                .fill(Color(.secondarySystemBackground))
+            backgroundLayer
             content
                 .clipShape(RoundedRectangle(cornerRadius: DesignSystem.cornerRadius))
-            RoundedRectangle(cornerRadius: DesignSystem.cornerRadius)
-                .stroke(isSelected ? Color.accentColor : Color.black.opacity(0.08), lineWidth: isSelected ? 2 : 1)
+            borderLayer
         }
         .frame(width: liveWidth, height: liveHeight)
         .contentShape(RoundedRectangle(cornerRadius: DesignSystem.cornerRadius))
@@ -83,6 +81,35 @@ struct ElementContainerView: View {
             if isSelected && !isText {
                 heightHandle.offset(y: 4)
             }
+        }
+    }
+
+    // MARK: - Chrome
+
+    /// Miro-style chrome. Image/audio blocks keep a filled, subtly-bordered
+    /// chip. Text blocks are canvas-native: **no background**, and the only
+    /// border is a faint accent ring shown while the block is selected or
+    /// being edited — never a persistent background.
+    @ViewBuilder
+    private var backgroundLayer: some View {
+        if isText {
+            Color.clear
+        } else {
+            RoundedRectangle(cornerRadius: DesignSystem.cornerRadius)
+                .fill(Color(.secondarySystemBackground))
+        }
+    }
+
+    @ViewBuilder
+    private var borderLayer: some View {
+        if isText {
+            if isSelected || isFocused {
+                RoundedRectangle(cornerRadius: DesignSystem.cornerRadius)
+                    .stroke(Color.accentColor.opacity(0.6), lineWidth: 1.5)
+            }
+        } else {
+            RoundedRectangle(cornerRadius: DesignSystem.cornerRadius)
+                .stroke(isSelected ? Color.accentColor : Color.black.opacity(0.08), lineWidth: isSelected ? 2 : 1)
         }
     }
 

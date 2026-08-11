@@ -24,7 +24,13 @@ struct TextElementView: View {
 
         AutoGrowingTextView(
             text: textBinding,
-            isEditable: isFocused,
+            // Editing requires writing mode too: while the carousel→writing
+            // transition runs, a stale copy of this element still exists in
+            // the outgoing carousel surface. If it were editable, it would
+            // become first responder and steal the keyboard, then resign as
+            // it's removed — leaving the writing copy to re-grab focus and
+            // the keyboard to appear twice.
+            isEditable: isFocused && store.writingMode,
             width: contentWidth,
             onHeightChange: { measured in
                 store.setTextHeight(element.id, height: measured)

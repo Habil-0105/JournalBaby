@@ -328,6 +328,10 @@ final class CanvasStore: ObservableObject {
         )
         pages[currentPageIndex].elements.append(element)
         select(element.id)
+        // Enter typing mode immediately: select + focus the new text block so
+        // its `AutoGrowingTextView` becomes first responder and the keyboard
+        // opens without an extra tap. Cursor lands at the start of the field.
+        focusText(element.id)
         return element
     }
 

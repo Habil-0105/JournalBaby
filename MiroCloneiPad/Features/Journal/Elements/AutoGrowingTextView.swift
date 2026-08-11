@@ -46,10 +46,19 @@ struct AutoGrowingTextView: UIViewRepresentable {
         }
         uiView.isEditable = isEditable
         uiView.isUserInteractionEnabled = isEditable
-        if isEditable && !uiView.isFirstResponder {
-            uiView.becomeFirstResponder()
-        } else if !isEditable && uiView.isFirstResponder {
-            uiView.resignFirstResponder()
+        // Defer responder changes to the next runloop tick. Calling
+        // `becomeFirstResponder()` synchronously from `updateUIView` —
+        // especially while a mode-switch `.transition`/`withAnimation` is
+        // still laying out the hierarchy (adding a text block from the
+        // carousel toolbar auto-focuses it) — re-enters UIKit's responder
+        // machinery mid-layout and can deadlock the main thread. Doing it
+        // async makes focus feel identical but never runs during layout.
+        DispatchQueue.main.async {
+            if isEditable && !uiView.isFirstResponder {
+                uiView.becomeFirstResponder()
+            } else if !isEditable && uiView.isFirstResponder {
+                uiView.resignFirstResponder()
+            }
         }
         recalculateHeight(for: uiView)
     }

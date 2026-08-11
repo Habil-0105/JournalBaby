@@ -62,6 +62,13 @@ struct WritingCanvasView: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .contentShape(Rectangle())
+            // Tapping any empty space around the paper dismisses an active
+            // text edit (and deselection). Taps that land on the paper /
+            // elements are handled by their own gestures and take precedence,
+            // so this only fires for the surrounding canvas background.
+            .onTapGesture {
+                store.select(nil)
+            }
             .gesture(pinchOutToExit)
             .onAppear { store.updateCanvasSize(pageSize) }
             .onChange(of: pageSize) { _, newSize in

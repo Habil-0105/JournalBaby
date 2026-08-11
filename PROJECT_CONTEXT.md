@@ -142,7 +142,7 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 - **Responsibilities:**
   - Hold `[Page]`, `currentPageIndex`, plus UI‑only state (`selectedElementID`, `focusedTextID`, `drawMode`, `writingMode`, `canvasSize`). `writingMode` is the central mode switch: when `true`, the app shows the large centered writing canvas (only the current page; `PKCanvasView` interactive once the user arms drawing via `drawMode`); when `false`, the carousel preview (small current page with side pages deep below, `PKCanvasView` non‑interactive).
   - Expose `currentPage`, `elements`, and `scribble` as computed accessors so views keep reading `store.elements` / `store.scribble` instead of reaching into a specific page index. `scribble` has a custom setter that writes back to the current page.
-  - Add text / image / audio elements (on the current page) with cascading default positions (`nextDefaultPosition`).
+  - Add text / image / audio elements (on the current page) with cascading default positions (`nextDefaultPosition`). `addText()` **auto-focuses** the new block (`select` + `focusText`) so its `AutoGrowingTextView` becomes first responder and the keyboard opens immediately without an extra tap — the user is dropped straight into typing, cursor at the start.
   - Manage pages: `addPage()`, `switchToPage(at:)`, `removePage(at:)`. The board always has at least one page; deleting the last one creates a fresh empty replacement. Switching pages clears `selectedElementID`/`focusedTextID`/`drawMode` because those don't carry across.
   - **Mode switching:** `enterWritingMode()` flips `writingMode = true` and clears `selectedElementID`/`focusedTextID`, but leaves **`drawMode = false`** — drawing is not auto-engaged; the user must explicitly arm it. `enableDrawing()` sets `drawMode = true` (clears selection/focus); `disableDrawing()` clears it, as do `select`/`focusText`/`switchToPage`/`removePage`. `exitWritingMode()` flips `writingMode = false` **and resets `drawMode = false`** so the carousel's swipe guard (`!store.drawMode`) is re‑enabled immediately on return. Three entry paths into writing mode: (a) pinch-in (fingers spreading) on the carousel (`MagnifyGesture.magnification > enterWritingPinchThreshold = 1.3` in `PageCarouselView`); (b) the Scribble toolbar button (enters *and* arms drawing); (c) any of the other three toolbar tools (Add Text / Add Image / Add Audio) — every tool tap in carousel mode calls `JournalView.enterWritingModeIfNeeded()` before performing its action, so the new content / picker / sheet always lands on the writing canvas, not the carousel preview. While in writing mode the Scribble toolbar button toggles drawing on/off (`enableDrawing` / `disableDrawing`) and a separate, always-visible "Exit Writing" button leaves the mode; outside writing mode "Exit Writing" doesn't exist and the Scribble button enters the mode with drawing armed. Additional exit path: pinch-out (fingers closing) in `WritingCanvasView` (`MagnifyGesture.magnification < exitPinchThreshold = 0.7`). **The switch itself is animated**: `enterWritingMode()` / `exitWritingMode()` / `enableDrawing()` / `disableDrawing()` flip their `@Published` state inside `withAnimation(DesignSystem.modeSwitchAnimation)` (`Animation.spring(response: 0.35, dampingFraction: 0.82)`), and both surfaces in `JournalView` carry `.transition(.scale(scale: 0.5).combined(with: .opacity))`, so entering/exiting writing mode reads as a zoom crossfade rather than a hard cut.
   - Persist image bytes to `Documents/Images/<UUID>.jpg` and audio bytes to `Documents/Audio/<UUID>.m4a`.
@@ -195,6 +195,7 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
   - **Pinch-out to exit** (`MagnifyGesture`): `MagnifyGesture.magnification` is the scale factor between fingers — fingers **closing** (the natural "zoom out" gesture) drives magnification below 1; when it drops below `exitPinchThreshold = 0.7`, `store.exitWritingMode()` is called. The view is destroyed and `JournalView` swaps back to `PageCarouselView`.
   - Reports `pageSize` to `store.updateCanvasSize` so element drag/resize clamps match the canonical canvas regardless of which mode last reported it.
   - **Keyboard handling keeps the paper fixed-size.** The whole surface is `.ignoresSafeArea(.keyboard)`, so the keyboard never resizes the container and the paper never shrinks (previously the keyboard shrank the proposal → `writingCanvasSize` recomputed smaller → the paper visually shrank while the absolute-positioned text element didn't move). Instead the keyboard height (tracked via `keyboardWillShow`/`keyboardWillHide`) drives a `viewportOffset`: the paper is `.offset(y: -viewportOffset)` by just enough to keep the focused text element's bottom `keyboardMargin = 12pt` above the keyboard top; the offset is 0 (paper re-centers) when the keyboard hides or the focused element is already clear. Animated with `.easeOut(0.25)` on keyboard transitions.
+  - **Tap anywhere outside a text edit dismisses it.** The whole container has an `.onTapGesture { store.select(nil) }` (the paper/elements' own tap gestures take precedence and consume their touches), so tapping empty space *around* the paper unfocuses a text block and dismisses the keyboard — matching the existing paper-background tap (`select(nil)`), taps on another element (`select(id)` clears old focus), and Scribble arming (clears focus). No extra "tap the paper" step required.
 
 ### PageContentView (`Features/Journal/Canvas/PageContentView.swift`)
 
@@ -215,6 +216,7 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 
 - **Purpose:** Per‑block chrome and gesture host.
 - **Key behaviour:**
+  - **Miro-style chrome, split by kind.** Text blocks are canvas‑native: transparent background (the `UITextView`/`AutoGrowingTextView` is already `.clear`) and **no persistent border** — the only indicator is a faint accent ring (`Color.accentColor.opacity(0.6)`, 1.5pt) shown while the block is selected *or* focused/being edited. Image/audio blocks keep the filled `secondarySystemBackground` chip + 1pt hairline that fades to an accent ring when selected. Chrome lives in `backgroundLayer` / `borderLayer` so the fill and border can differ per kind.
   - Tap → `store.select(element.id)`.
   - Double‑tap (text) → `store.focusText(element.id)`.
   - Drag (when allowed) → writes straight to `store.moveElement(_:to:)` with `start + translation`; the visual frame, model position, and hit‑test rectangle are therefore *always* the same value (no temporary offset to reconcile).
@@ -240,7 +242,7 @@ There is exactly one entry point: `@main MiroCloneApp`. The whole UI is built in
 - **TextElementView** is a thin SwiftUI host.
 - **AutoGrowingTextView** is a `UIViewRepresentable` around a non‑scrolling `UITextView`. Why: SwiftUI's native `TextEditor` doesn't give a reliable intrinsic size that wraps text correctly inside a fixed‑width block.
 - Reports every height change via `onHeightChange → store.setTextHeight(_:height:)`. Because the text view is non‑scrolling and `sizeThatFits` is given an exact width, the block's frame is always the height of the actual text — no flow engine.
-- Editing is opt‑in (`isEditable = isFocused`); `onFocusDidBegin/End` notifies the store so drag can take over again.
+- Editing is opt‑in (`isEditable = isFocused && store.writingMode` — the `writingMode` gate keeps the *outgoing carousel copy* of a freshly added block from grabbing the keyboard during the carousel→writing `.transition`; only the writing surface's instance is ever editable). `onFocusDidBegin/End` notifies the store so drag can take over again. First‑responder engagement is deferred to the next runloop tick (`DispatchQueue.main.async`) so `becomeFirstResponder()` never runs mid‑layout (which deadlocked the main thread when a block was auto‑focused at the same moment the writing surface was animating in).
 - `textContainer.widthTracksTextView = true` + an explicit `sizeThatFits(_:uiView:context:)` overrides the "types past the block" bug where SwiftUI gives a `UIViewRepresentable` no reliable intrinsic width.
 
 ### ImageElementView (`Features/Journal/Elements/ImageElementView.swift`)
@@ -295,6 +297,8 @@ Toolbar tap (JournalView)
      THEN performs the tool's normal action — so every new element / picker /
      sheet lands on the writing canvas, not the carousel preview.
   ├─ text   ─► store.addText()         ─► CanvasElement(kind:.text, position:cascade(), width:360, height:90)
+  │             (then auto-focuses: select + focusText → AutoGrowingTextView
+  │              becomes first responder → keyboard opens, caret at start)
   ├─ image  ─► PhotosPicker           ─► Task { data = await newItem.loadTransferable(type:Data.self) }
   │                                       ─► store.addImage(data:)   ─► write Documents/Images/<UUID>.jpg
   │                                                                          ─► derive height from UIImage aspect ratio
@@ -510,7 +514,7 @@ This means switching pages is just a layout update — no PKCanvasView is create
 
 | Action surface         | Code path                                                          |
 |------------------------|--------------------------------------------------------------------|
-| Add text               | `JournalView` toolbar → `enterWritingModeIfNeeded()` → `store.addText()` |
+| Add text               | `JournalView` toolbar → `enterWritingModeIfNeeded()` → `store.addText()` (auto-`focusText`, keyboard opens immediately) |
 | Add image              | `PhotosPicker` → `onChange(of: photosPickerItem)` → `enterWritingModeIfNeeded()` → `Task { await loadTransferable(type:Data.self) }` → `store.addImage(data:)` |
 | Add audio              | `JournalView` toolbar → `enterWritingModeIfNeeded()` → `showAudioSheet = true` → `AudioRecorderSheet` → `AudioRecorderManager.stop()` → `store.addAudio(fileURL:duration:)` |
 | Toggle Scribble (arm drawing) | Scribble toolbar button in carousel mode → `enterWritingModeIfNeeded()` → `store.enterWritingMode()` then `store.enableDrawing()`; in writing mode toggles `store.enableDrawing()` / `store.disableDrawing()` |
