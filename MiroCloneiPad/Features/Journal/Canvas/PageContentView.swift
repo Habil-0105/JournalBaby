@@ -34,7 +34,7 @@ struct PageContentView: View {
             }
             .allowsHitTesting(isCurrent && store.writingMode)
 
-            if isCurrent && !store.writingMode {
+            if isCurrent {
                 deleteButton
                     .scaleEffect(1 / max(contentScale, 0.001))
             }
@@ -52,6 +52,14 @@ struct PageContentView: View {
             } else if !store.drawMode {
                 store.select(nil)
             }
+        }
+        .alert("Delete this page?", isPresented: $showDeleteConfirmation) {
+            Button("Delete", role: .destructive) {
+                store.removePage(at: pageIndex)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes the current page and everything on it.")
         }
     }
 
@@ -85,12 +93,22 @@ struct PageContentView: View {
 
     // MARK: - Delete Button
 
+    /// Whether the delete confirmation dialog is showing (writing mode only —
+    /// the carousel deletes via its animated `requestDeletePage` flow instead).
+    @State private var showDeleteConfirmation = false
+
     private var deleteButton: some View {
         Button {
-            // Route through `requestDeletePage` so `PageCarouselView` can
-            // play the exit + entry animation. The actual removal happens
-            // once the carousel confirms the deletion.
-            store.requestDeletePage(at: pageIndex)
+            if store.writingMode {
+                // No carousel to play the exit + entry animation here, and
+                // there's no preview of the result, so confirm first.
+                showDeleteConfirmation = true
+            } else {
+                // Route through `requestDeletePage` so `PageCarouselView` can
+                // play the exit + entry animation. The actual removal happens
+                // once the carousel confirms the deletion.
+                store.requestDeletePage(at: pageIndex)
+            }
         } label: {
             Text("Delete")
                 .font(.subheadline.weight(.medium))
