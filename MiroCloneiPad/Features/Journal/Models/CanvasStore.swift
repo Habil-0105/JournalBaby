@@ -42,6 +42,17 @@ final class CanvasStore: ObservableObject {
             pages[currentPageIndex].scribble = newValue
         }
     }
+    /// The current page's full-page document body. Same single-source-of-truth
+    /// rule as `scribble`: read-through getter, write through the store.
+    var bodyText: String {
+        get { currentPage.bodyText }
+        set {
+            guard pages.indices.contains(currentPageIndex) else { return }
+            if pages[currentPageIndex].bodyText != newValue {
+                pages[currentPageIndex].bodyText = newValue
+            }
+        }
+    }
 
     @Published var selectedElementID: UUID?
 
@@ -49,6 +60,19 @@ final class CanvasStore: ObservableObject {
     /// separate from `selectedElementID` so a text block can be selected
     /// AND dragged without fighting its text view.
     @Published var focusedTextID: UUID?
+
+    /// True when the page's full-body text editor is the first responder.
+    /// Lives alongside `focusedTextID` so `WritingCanvasView`'s keyboard
+    /// avoidance can also lift the paper when the user is typing in the
+    /// document body, not just in a floating text element.
+    @Published var bodyFocused: Bool = false
+
+    /// Caret frame in the page's coordinate space (top-left origin,
+    /// unzoomed page). Updated by the body editor every time the caret
+    /// moves, and consumed by `WritingCanvasView` to compute the
+    /// caret-relative keyboard offset. `nil` while the body is not
+    /// focused or before the first layout pass.
+    @Published var bodyCaretRect: CGRect?
 
     /// When true, touches on the canvas draw scribble strokes directly on
     /// the board instead of interacting with elements. Selecting any
@@ -111,6 +135,8 @@ final class CanvasStore: ObservableObject {
             drawMode = true
             selectedElementID = nil
             focusedTextID = nil
+            bodyFocused = false
+            bodyCaretRect = nil
         }
     }
 
@@ -137,6 +163,8 @@ final class CanvasStore: ObservableObject {
             writingMode = true
             selectedElementID = nil
             focusedTextID = nil
+            bodyFocused = false
+            bodyCaretRect = nil
             drawMode = false
         }
     }
@@ -154,6 +182,8 @@ final class CanvasStore: ObservableObject {
             drawMode = false
             selectedElementID = nil
             focusedTextID = nil
+            bodyFocused = false
+            bodyCaretRect = nil
         }
     }
 
@@ -177,6 +207,8 @@ final class CanvasStore: ObservableObject {
         currentPageIndex = index
         selectedElementID = nil
         focusedTextID = nil
+        bodyFocused = false
+        bodyCaretRect = nil
         drawMode = false
     }
 
@@ -200,6 +232,8 @@ final class CanvasStore: ObservableObject {
         }
         selectedElementID = nil
         focusedTextID = nil
+        bodyFocused = false
+        bodyCaretRect = nil
         drawMode = false
     }
 
@@ -431,6 +465,36 @@ final class CanvasStore: ObservableObject {
         pages[idx.page].elements[idx.element].text = text
     }
 
+    /// Writes through to the current page's `bodyText`. Goes through the
+    /// `bodyText` setter so equality is checked and the @Published
+    /// `pages` only changes when the value actually changes (avoids
+    /// unnecessary SwiftUI invalidations on every keystroke).
+    func updateBodyText(_ text: String) {
+        bodyText = text
+    }
+
+    func setBodyFocused(_ focused: Bool) {
+        if bodyFocused != focused {
+            bodyFocused = focused
+            if !focused {
+                // Clear the caret rect so the canvas doesn't keep an
+                // offset around after the user dismisses the keyboard
+                // or moves to a different surface.
+                bodyCaretRect = nil
+            }
+        }
+    }
+
+    func setBodyCaretRect(_ rect: CGRect?) {
+        // Bail on no-op writes — `bodyCaretRect` is observed by the
+        // writing canvas, and `CGRect` equality alone is enough to
+        // short-circuit the typical "caret blinks but the rect didn't
+        // move" case.
+        if bodyCaretRect != rect {
+            bodyCaretRect = rect
+        }
+    }
+
     // MARK: - Removal
 
     func remove(_ id: UUID) {
@@ -440,7 +504,6 @@ final class CanvasStore: ObservableObject {
         if selectedElementID == id { selectedElementID = nil }
         if focusedTextID == id { focusedTextID = nil }
     }
-
     // MARK: - Helpers
 
     /// Locates an element across all pages. Returns `(pageIndex, elementIndex)`

@@ -30,6 +30,10 @@ struct PageContentView: View {
 
             dateLabel
 
+            if isCurrent {
+                bodyTextLayer
+            }
+
             ForEach(page.elements) { element in
                 ElementContainerView(store: store, element: element)
                     .offset(x: element.position.x, y: element.position.y)
@@ -39,6 +43,15 @@ struct PageContentView: View {
             // must be inert, otherwise touches over an element would drag /
             // resize it instead of painting a stroke over it.
             .allowsHitTesting(isCurrent && store.writingMode && !store.drawMode)
+
+            // One-shot visual feedback when the body editor rejects an
+            // edit because it would overflow the paper. Sits on top of
+            // the body and elements, but under the delete button so the
+            // delete affordance stays tappable.
+            Rectangle()
+                .fill(Color.red.opacity(0.22))
+                .opacity(bodyOverflowFlashOpacity)
+                .allowsHitTesting(false)
 
             if isCurrent {
                 deleteButton
@@ -125,11 +138,101 @@ struct PageContentView: View {
             .allowsHitTesting(false)
     }
 
+    // MARK: - Body text editor
+
+    /// The page's full-body text editor. Sits between the scribble layer
+    /// (below) and the floating elements (above), so:
+    /// - element drag/resize wins over the body (elements are on top)
+    /// - PencilKit draws on top of the text (the PKCanvasView paints after
+    ///   this layer but is below the elements)
+    /// Same `allowsHitTesting` rule as the elements layer: in carousel
+    /// mode the body is non-interactive; in writing mode with Draw off,
+    /// the body is editable; in writing mode with Draw on, touches fall
+    /// through to the PKCanvasView underneath.
+    private var bodyTextLayer: some View {
+        let inset = DesignSystem.bodyTextHorizontalMargin
+        let top = DesignSystem.bodyTextTopMargin
+        let bottom = DesignSystem.bodyTextBottomMargin
+        let width = max(pageSize.width - inset * 2, 1)
+        let height = max(pageSize.height - top - bottom, 1)
+        let isEditing = isCurrent && store.writingMode && !store.drawMode
+
+        let binding = Binding<String>(
+            get: { store.bodyText },
+            set: { store.updateBodyText($0) }
+        )
+
+        return AutoGrowingTextView(
+            text: binding,
+            isEditable: isEditing,
+            width: width,
+            // Don't grab the keyboard when writing mode opens — the user
+            // should only enter the body editor by tapping it. (Floating
+            // text elements keep their default of `true` so a freshly
+            // added text block still focuses immediately.)
+            becomesFirstResponderOnEdit: false,
+            onHeightChange: { _ in
+                // The body view fills its frame unconditionally — we don't
+                // currently grow the page. The callback is here so the
+                // same primitive used by floating text elements drives
+                // the body, keeping behavior consistent if/when we add
+                // page-growth or auto-scroll.
+            },
+            onFocusDidBegin: { store.setBodyFocused(true) },
+            onFocusDidEnd: { store.setBodyFocused(false) },
+            onCaretRectChange: { localRect in
+                // The callback is in the text view's own coordinate
+                // space; translate by the top/left padding applied
+                // above so the canvas can place it in page space.
+                let pageRect = localRect.offsetBy(dx: inset, dy: top)
+                store.setBodyCaretRect(pageRect)
+            },
+            // Hard cap: the writable area of the page. Once the
+            // measured text height would exceed this, the wrapper
+            // rejects new edits (with a haptic) so the content
+            // stays inside the paper instead of overflowing and
+            // being clipped.
+            maxHeight: height,
+            onOverflowReject: {
+                bodyOverflowFlashToken &+= 1
+                bodyOverflowFlashOpacity = 0.55
+                withAnimation(.easeOut(duration: 0.22)) {
+                    bodyOverflowFlashOpacity = 0
+                }
+            }
+        )
+        .frame(width: width, height: height, alignment: .topLeading)
+        .padding(.horizontal, inset)
+        .padding(.top, top)
+        .padding(.bottom, bottom)
+        .overlay(alignment: .topLeading) {
+            if page.bodyText.isEmpty {
+                Text("Start writing…")
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, inset)
+                    .padding(.top, top)
+                    .allowsHitTesting(false)
+            }
+        }
+        // Same gate as the elements layer. The body is the "main writing
+        // surface"; elements and PencilKit are the same kind of first-class
+        // citizens as before, this just adds a third interactive layer
+        // that obeys the same rule.
+        .allowsHitTesting(isEditing)
+    }
+
     // MARK: - Delete Button
 
     /// Whether the delete confirmation dialog is showing (writing mode only —
     /// the carousel deletes via its animated `requestDeletePage` flow instead).
     @State private var showDeleteConfirmation = false
+
+    /// Bumped every time the body editor rejects a text edit because it
+    /// would overflow the paper. Drives the one-shot red flash overlay
+    /// below so the user gets clear feedback that "this keystroke didn't
+    /// take" instead of silently failing.
+    @State private var bodyOverflowFlashToken: Int = 0
+    @State private var bodyOverflowFlashOpacity: Double = 0
 
     private var deleteButton: some View {
         Button {

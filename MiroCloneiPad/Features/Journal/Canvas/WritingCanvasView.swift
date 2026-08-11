@@ -50,7 +50,11 @@ struct WritingCanvasView: View {
                     .offset(offset)
                     // Apply standard keyboard avoidance independent of the zoom offset
                     .offset(y: -viewportOffset)
-                    .animation(.easeOut(duration: 0.25), value: keyboardHeight)
+                    // Animate on BOTH keyboard show/hide and caret moves
+                    // so the paper glides as the user types into long
+                    // content rather than snapping on every keystroke.
+                    .animation(.easeOut(duration: 0.18), value: keyboardHeight)
+                    .animation(.easeOut(duration: 0.18), value: store.bodyCaretRect)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
@@ -87,15 +91,59 @@ struct WritingCanvasView: View {
     }
 
     private func keyboardViewportOffset(container: CGSize, pageSize: CGSize) -> CGFloat {
-        guard keyboardHeight > 0, let focusedID = store.focusedTextID,
-              let element = store.elements.first(where: { $0.id == focusedID })
-        else { return 0 }
+        guard keyboardHeight > 0 else { return 0 }
 
         let canvasOriginY = (container.height - pageSize.height) / 2
-        let elementBottom = canvasOriginY + element.position.y + element.height
-        let keyboardTop = container.height - keyboardHeight
-        let needed = elementBottom + keyboardMargin - keyboardTop
-        return max(needed, 0)
+
+        // Floating text element is focused: keep its bottom above the keyboard.
+        if let focusedID = store.focusedTextID,
+           let element = store.elements.first(where: { $0.id == focusedID }) {
+            let elementBottom = canvasOriginY + element.position.y + element.height
+            let keyboardTop = container.height - keyboardHeight
+            let needed = elementBottom + keyboardMargin - keyboardTop
+            return max(needed, 0)
+        }
+
+        // Body text editor is focused: shift the paper only enough to keep
+        // the caret just above the keyboard. When the caret is already
+        // visible (short document, caret near the top) the offset is 0 —
+        // the paper stays put. As the caret moves down (or the document
+        // grows), the offset grows just enough to keep the caret in view.
+        //
+        // No upper clamp on the shift: the page is allowed to scroll
+        // past the top of the container if that's what it takes to keep
+        // the caret visible. The previous version clamped the shift to
+        // `canvasOriginY` (the gap between the container top and the
+        // page top), which left the caret covered by the keyboard any
+        // time the user was typing past roughly the upper half of the
+        // page on iPad landscape, or on any device where the keyboard
+        // is taller than `canvasOriginY`. The clamp now is: don't
+        // shift past the point where the caret's *top* would hit the
+        // container's top edge — that's the most the shift can
+        // physically help.
+        if store.bodyFocused, let caret = store.bodyCaretRect {
+            let caretTopInContainer = canvasOriginY + caret.minY * scale
+            let caretBottomInContainer = canvasOriginY + caret.maxY * scale
+            let keyboardTop = container.height - keyboardHeight
+
+            // If the caret is already above the keyboard, no shift needed.
+            if caretBottomInContainer <= keyboardTop - keyboardMargin {
+                return 0
+            }
+
+            // Lift the paper so the caret bottom sits one margin above
+            // the keyboard top.
+            let needed = caretBottomInContainer + keyboardMargin - keyboardTop
+
+            // Cap at the caret's *current top*: shifting further would
+            // just push the caret off the top of the screen, which
+            // doesn't help — at that point the user has run out of
+            // room and only scrolling the page itself (out of scope
+            // for the body editor in writing mode) would reveal more.
+            return min(max(needed, 0), max(caretTopInContainer, 0))
+        }
+
+        return 0
     }
 
     /// Zoom gesture handling: allows pinching to zoom in/out with accurate finger tracking.

@@ -18,9 +18,35 @@ struct AutoGrowingTextView: UIViewRepresentable {
     /// edit). Reflects `CanvasStore.focusedTextID`.
     var isEditable: Bool
     var width: CGFloat
+    /// When `true` (default), the wrapped `UITextView` calls
+    /// `becomeFirstResponder()` as soon as `isEditable` becomes `true`
+    /// — used by floating text elements so the keyboard appears the
+    /// instant they're created. Set to `false` for surfaces that should
+    /// only receive the keyboard after the user explicitly taps them
+    /// (e.g. the page's full-body editor, which is editable from the
+    /// moment writing mode opens but must not steal focus on entry).
+    var becomesFirstResponderOnEdit: Bool = true
     var onHeightChange: (CGFloat) -> Void
     var onFocusDidBegin: () -> Void
     var onFocusDidEnd: () -> Void
+    /// Called whenever the caret moves (typing, arrow keys, taps) with
+    /// the caret's frame in the text view's own coordinate space. Used
+    /// by the page-body editor to ask the canvas to keep the caret
+    /// above the keyboard as the user types into long content.
+    var onCaretRectChange: ((CGRect) -> Void)? = nil
+    /// Hard cap on the text view's content height, in the same
+    /// coordinate space as `width`. When non-nil, edits that would
+    /// push the rendered text past this height are rejected (with a
+    /// haptic + visual flash) so the content stays inside its
+    /// container instead of overflowing and getting clipped. `nil`
+    /// means no cap — the default for floating text elements, which
+    /// grow their container to match their content.
+    var maxHeight: CGFloat? = nil
+    /// Called whenever the text view rejects a proposed edit because
+    /// it would exceed `maxHeight`. Use this to surface user feedback
+    /// (the wrapper already plays a haptic + flash; this is for
+    /// additional UI like a toast).
+    var onOverflowReject: (() -> Void)? = nil
 
     func makeUIView(context: Context) -> UITextView {
         let view = UITextView()
@@ -53,7 +79,11 @@ struct AutoGrowingTextView: UIViewRepresentable {
         // carousel toolbar auto-focuses it) — re-enters UIKit's responder
         // machinery mid-layout and can deadlock the main thread. Doing it
         // async makes focus feel identical but never runs during layout.
+        // Skipped entirely when `becomesFirstResponderOnEdit` is `false`
+        // so the page-body editor doesn't steal the keyboard on writing
+        // mode entry — it only grabs focus after the user taps it.
         DispatchQueue.main.async {
+            guard becomesFirstResponderOnEdit else { return }
             if isEditable && !uiView.isFirstResponder {
                 uiView.becomeFirstResponder()
             } else if !isEditable && uiView.isFirstResponder {
@@ -90,21 +120,114 @@ struct AutoGrowingTextView: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: AutoGrowingTextView
+        /// Haptic generator used when an edit is rejected for overflowing
+        /// the configured `maxHeight`. Lazily created so it doesn't fire
+        /// on every keystroke and stays ready for the next rejection.
+        private lazy var overflowHaptic = UIImpactFeedbackGenerator(style: .light)
+
         init(_ parent: AutoGrowingTextView) {
             self.parent = parent
+        }
+
+        func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            // Hard cap on content height: if the proposed edit would push
+            // the rendered text past `maxHeight`, reject it so the text
+            // stays inside its container instead of overflowing and
+            // getting clipped. Allow deletions unconditionally (the user
+            // must always be able to backspace to make room) and let
+            // IME-composition edits through so the keyboard can keep
+            // building the in-progress character without us rejecting
+            // intermediate states.
+            guard let maxHeight = parent.maxHeight, maxHeight > 0 else {
+                return true
+            }
+
+            // Pure deletion: always allow.
+            if text.isEmpty {
+                return true
+            }
+
+            // IME composition (CJK / Korean): always allow. `markedTextRange`
+            // is non-nil while the user is building a character; rejecting
+            // here would make the IME un-usable.
+            if textView.markedTextRange != nil {
+                return true
+            }
+
+            // Compute the proposed text and measure it. We use a throwaway
+            // `UITextView` configured the same way as the live one so the
+            // answer is the same answer UIKit will give at the next
+            // layout pass — cheaper than swapping text on the live view
+            // and re-measuring.
+            let nsCurrent = textView.text as NSString
+            guard range.location <= nsCurrent.length,
+                  range.location + range.length <= nsCurrent.length else {
+                return true
+            }
+            let proposed = nsCurrent.replacingCharacters(in: range, with: text)
+            let probe = UITextView()
+            probe.font = textView.font
+            probe.textContainerInset = textView.textContainerInset
+            probe.textContainer.lineFragmentPadding = textView.textContainer.lineFragmentPadding
+            probe.attributedText = NSAttributedString(
+                string: proposed,
+                attributes: [.font: textView.font ?? UIFont.preferredFont(forTextStyle: .body)]
+            )
+            probe.frame = CGRect(x: 0, y: 0, width: parent.width, height: .greatestFiniteMagnitude)
+            let measured = probe.sizeThatFits(CGSize(
+                width: parent.width,
+                height: .greatestFiniteMagnitude
+            )).height
+
+            if measured > maxHeight {
+                overflowHaptic.impactOccurred()
+                parent.onOverflowReject?()
+                return false
+            }
+            return true
         }
 
         func textViewDidChange(_ textView: UITextView) {
             parent.text = textView.text
             parent.recalculateHeight(for: textView)
+            reportCaret(for: textView)
+        }
+
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            // Fires on caret moves, arrow-key navigation, and tap-to-place
+            // — all the moments the caret position that the canvas needs
+            // for keyboard avoidance might have changed.
+            reportCaret(for: textView)
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
+            // Report the caret BEFORE flipping focus so by the time
+            // `bodyFocused` becomes true the keyboard-offset computation
+            // in `WritingCanvasView` already has a caret rect to work
+            // with. (Otherwise there's a one-tick window where the
+            // canvas sees `bodyFocused == true` and `bodyCaretRect ==
+            // nil` and produces an offset of 0 — which the user would
+            // experience as the keyboard covering the editor for one
+            // frame.)
+            reportCaret(for: textView)
             parent.onFocusDidBegin()
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
+            // Match `textViewDidBeginEditing`'s order: clear dependent
+            // state before flipping focus so observers never see a
+            // half-transition (focused but stale rect).
             parent.onFocusDidEnd()
+        }
+
+        private func reportCaret(for textView: UITextView) {
+            guard let callback = parent.onCaretRectChange else { return }
+            let end = textView.selectedTextRange?.end ?? textView.beginningOfDocument
+            let rect = textView.caretRect(for: end)
+            // `caretRect(for:)` returns a rect in the text view's own
+            // coordinate space; report it raw so callers can convert it
+            // into the page / canvas space they need.
+            callback(rect)
         }
     }
 }

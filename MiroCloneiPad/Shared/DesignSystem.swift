@@ -17,6 +17,14 @@ enum DesignSystem {
     /// Gap between a block's edge and its own content.
     static let blockContentPadding: CGFloat = 16
 
+    /// Page margins for the full-body text editor. Reserves room at the
+    /// top for the date label, leaves a comfortable reading column, and
+    /// keeps the bottom clear so the last line isn't flush against the
+    /// paper edge.
+    static let bodyTextHorizontalMargin: CGFloat = 32
+    static let bodyTextTopMargin: CGFloat = 40
+    static let bodyTextBottomMargin: CGFloat = 32
+
     static let cornerRadius: CGFloat = 16
 
     static let minBlockWidth: CGFloat = 160
