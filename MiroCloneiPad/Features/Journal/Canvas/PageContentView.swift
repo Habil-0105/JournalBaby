@@ -36,7 +36,12 @@ struct PageContentView: View {
         .contentShape(RoundedRectangle(cornerRadius: DesignSystem.cornerRadius))
         .coordinateSpace(name: "canvas")
         .onTapGesture {
-            if isCurrent && !store.drawMode {
+            if !isCurrent {
+                // Tapping a neighboring page paper navigates to it, the
+                // same as tapping the Add Page card. Only applies in
+                // carousel mode — writing mode never renders neighbors.
+                store.switchToPage(at: pageIndex)
+            } else if !store.drawMode {
                 store.select(nil)
             }
         }
