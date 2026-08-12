@@ -47,6 +47,12 @@ struct AutoGrowingTextView: UIViewRepresentable {
     /// (the wrapper already plays a haptic + flash; this is for
     /// additional UI like a toast).
     var onOverflowReject: (() -> Void)? = nil
+    /// External focus control, used by surfaces where the owner (not
+    /// the text view's own tap) decides when editing starts and stops
+    /// (e.g. the page-body editor, which enters/exits editing when the
+    /// user taps the paper). When nil (the default for floating text
+    /// elements) focus is driven by `becomesFirstResponderOnEdit`.
+    var isFocused: Bool? = nil
 
     func makeUIView(context: Context) -> UITextView {
         let view = UITextView()
@@ -72,22 +78,32 @@ struct AutoGrowingTextView: UIViewRepresentable {
         }
         uiView.isEditable = isEditable
         uiView.isUserInteractionEnabled = isEditable
-        // Defer responder changes to the next runloop tick. Calling
-        // `becomeFirstResponder()` synchronously from `updateUIView` —
-        // especially while a mode-switch `.transition`/`withAnimation` is
-        // still laying out the hierarchy (adding a text block from the
-        // carousel toolbar auto-focuses it) — re-enters UIKit's responder
-        // machinery mid-layout and can deadlock the main thread. Doing it
-        // async makes focus feel identical but never runs during layout.
-        // Skipped entirely when `becomesFirstResponderOnEdit` is `false`
-        // so the page-body editor doesn't steal the keyboard on writing
-        // mode entry — it only grabs focus after the user taps it.
+        // Asynchronously apply focus changes. Calling
+        // `becomeFirstResponder()`/`resignFirstResponder()` synchronously
+        // from `updateUIView` — especially while a mode-switch
+        // `.transition`/`withAnimation` is still laying out the hierarchy —
+        // re-enters UIKit's responder machinery mid-layout and can deadlock
+        // the main thread. Doing it async makes focus feel identical but
+        // never runs during layout.
         DispatchQueue.main.async {
-            guard becomesFirstResponderOnEdit else { return }
-            if isEditable && !uiView.isFirstResponder {
-                uiView.becomeFirstResponder()
-            } else if !isEditable && uiView.isFirstResponder {
-                uiView.resignFirstResponder()
+            if let externallyFocused = isFocused {
+                // External focus control (page-body editor): the owner
+                // decides when editing starts/stops. Focusing here only
+                // when editable, and resigning whenever the owner says
+                // not-focused (this is what ends editing when the user
+                // taps outside the editor).
+                if externallyFocused && isEditable && !uiView.isFirstResponder {
+                    uiView.becomeFirstResponder()
+                } else if !externallyFocused && uiView.isFirstResponder {
+                    uiView.resignFirstResponder()
+                }
+            } else {
+                // Self-driven focus (floating text elements).
+                if isEditable && becomesFirstResponderOnEdit && !uiView.isFirstResponder {
+                    uiView.becomeFirstResponder()
+                } else if !isEditable && uiView.isFirstResponder {
+                    uiView.resignFirstResponder()
+                }
             }
         }
         recalculateHeight(for: uiView)

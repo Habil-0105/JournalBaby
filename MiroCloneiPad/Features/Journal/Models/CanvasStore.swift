@@ -109,6 +109,13 @@ final class CanvasStore: ObservableObject {
             focusedTextID = nil
         }
         selectedElementID = id
+        // Selecting an element (or deselecting on an empty-area tap)
+        // always ends body editing: tapping anywhere outside the body
+        // editor is "tap outside the TextEditor" and must dismiss the
+        // keyboard.
+        if bodyFocused {
+            setBodyFocused(false)
+        }
     }
 
     /// Starts editing a text block (double-tap / explicit edit action).
@@ -117,6 +124,10 @@ final class CanvasStore: ObservableObject {
         selectedElementID = id
         focusedTextID = id
         drawMode = false
+        // Focus moves to a floating text element — body editing ends.
+        if bodyFocused {
+            setBodyFocused(false)
+        }
     }
 
     func clearTextFocus(_ id: UUID) {

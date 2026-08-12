@@ -69,7 +69,17 @@ struct PageContentView: View {
                 // carousel mode — writing mode never renders neighbors.
                 store.switchToPage(at: pageIndex)
             } else if !store.drawMode {
+                // Tap on empty paper. If the body editor is currently
+                // editing, this is a "tap outside the editor" and must
+                // end editing (dismiss keyboard); `select(nil)` does that
+                // via `select` clearing body focus. If the body was NOT
+                // editing (and we're in writing mode), this is a "tap on
+                // the empty paper" that starts editing.
+                let wasEditing = store.bodyFocused
                 store.select(nil)
+                if store.writingMode && !wasEditing {
+                    store.setBodyFocused(true)
+                }
             }
         }
         .alert("Delete this page?", isPresented: $showDeleteConfirmation) {
@@ -166,10 +176,12 @@ struct PageContentView: View {
             text: binding,
             isEditable: isEditing,
             width: width,
-            // Don't grab the keyboard when writing mode opens — the user
-            // should only enter the body editor by tapping it. (Floating
-            // text elements keep their default of `true` so a freshly
-            // added text block still focuses immediately.)
+            // Focus is externally driven: `store.bodyFocused` turns true
+            // when the user taps the paper, false when they tap outside
+            // the editor. This replaces `becomesFirstResponderOnEdit`
+            // (which is ignored when `isFocused` is non-nil) — the body
+            // editor must NOT steal the keyboard on writing-mode entry;
+            // it only starts editing on an explicit paper tap.
             becomesFirstResponderOnEdit: false,
             onHeightChange: { _ in
                 // The body view fills its frame unconditionally — we don't
@@ -199,21 +211,13 @@ struct PageContentView: View {
                 withAnimation(.easeOut(duration: 0.22)) {
                     bodyOverflowFlashOpacity = 0
                 }
-            }
+            },
+            isFocused: store.bodyFocused
         )
         .frame(width: width, height: height, alignment: .topLeading)
         .padding(.horizontal, inset)
         .padding(.top, top)
         .padding(.bottom, bottom)
-        .overlay(alignment: .topLeading) {
-            if page.bodyText.isEmpty {
-                Text("Start writing…")
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, inset)
-                    .padding(.top, top)
-                    .allowsHitTesting(false)
-            }
-        }
         // Same gate as the elements layer. The body is the "main writing
         // surface"; elements and PencilKit are the same kind of first-class
         // citizens as before, this just adds a third interactive layer
