@@ -25,24 +25,29 @@ struct PageContentView: View {
             RoundedRectangle(cornerRadius: DesignSystem.cornerRadius)
                 .fill(Color(.systemBackground))
 
-            scribbleLayer
-                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.cornerRadius))
+            // The page's reorderable content layers — the whole-page text
+            // editor, the whole-page scribble, and one slot per individual
+            // element — rendered back-to-front per `page.layerOrder`
+            // (index 0 = topmost, so reversed() gives the bottom-up ZStack
+            // draw order). Each layer keeps its own existing frame/
+            // positioning/hit-testing logic untouched — reordering only
+            // changes WHERE in the ZStack it's drawn, never how it's laid
+            // out or gated. Per-page (`page`, not `store`), so carousel
+            // neighbours never share or leak an order.
+            ForEach(page.layerOrder.reversed(), id: \.self) { ref in
+                contentLayer(ref)
+            }
 
+            // Pinned above every reorderable layer (not interleaved among
+            // them) so it stays reliably readable no matter what the user
+            // has put on top — including when Scribble itself is reordered
+            // to the top. In the DEFAULT order this is a one-line behavior
+            // note, not a regression: previously dateLabel sat above
+            // scribble but below the body/elements, so it was already
+            // always visible in practice (nothing is normally drawn
+            // directly under it); pinning it above everything just makes
+            // that guarantee explicit and order-proof.
             dateLabel
-
-            if isCurrent {
-                bodyTextLayer
-            }
-
-            ForEach(page.elements) { element in
-                ElementContainerView(store: store, element: element)
-                    .offset(x: element.position.x, y: element.position.y)
-            }
-            // Elements are interactive only in writing mode with drawing
-            // OFF. While Scribble is armed the layer above the PKCanvasView
-            // must be inert, otherwise touches over an element would drag /
-            // resize it instead of painting a stroke over it.
-            .allowsHitTesting(isCurrent && store.writingMode && !store.drawMode)
 
             // The journal's shared hint, rendered only by the current page in
             // writing mode while it's toggled visible — read straight from
@@ -113,6 +118,59 @@ struct PageContentView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This permanently deletes the current page and everything on it.")
+        }
+    }
+
+    // MARK: - Layer ordering
+
+    /// Renders one of the three reorderable content layers. Each case
+    /// preserves exactly the modifiers/gates it had in the old hardcoded
+    /// ZStack — this function only decides WHERE the layer lands in the
+    /// stack, never how it behaves once there.
+    @ViewBuilder
+    private func contentLayer(_ ref: CanvasLayerRef) -> some View {
+        switch ref {
+        case .scribble:
+            scribbleLayer
+                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.cornerRadius))
+        case .textEditor:
+            // Unchanged from before: the body text layer only renders for
+            // the current page. Carousel neighbours show no body-text
+            // preview regardless of layer order (pre-existing behavior,
+            // not something this refactor changes).
+            if isCurrent {
+                bodyTextLayer
+            }
+        case .element(let id):
+            elementView(for: id)
+        }
+    }
+
+    /// Renders one element by id, looked up in `page.elements`. Looked up
+    /// rather than passed in directly because `layerOrder` only stores the
+    /// id — the single source of truth for the element's own data stays
+    /// `page.elements`, same as before. If the id isn't found (e.g. a
+    /// stale ref that somehow slipped past `CanvasStore`'s prune-on-remove)
+    /// this renders nothing rather than crashing.
+    ///
+    /// Same gate every element had before, just applied per-element instead
+    /// of once for a shared `ForEach` — elements are interactive only in
+    /// writing mode with drawing OFF. While Scribble is armed the layer
+    /// above the PKCanvasView must be inert, otherwise touches over an
+    /// element would drag / resize it instead of painting a stroke over it.
+    ///
+    /// No additional "who wins on overlap" logic is needed here: because
+    /// `contentLayer` is called in `page.layerOrder` order, SwiftUI's
+    /// normal top-down ZStack hit-testing already makes whichever layer is
+    /// topmost — a specific element, the text editor, or scribble — win
+    /// touches where their regions overlap. Z-order and hit-test priority
+    /// stay in lockstep for free.
+    @ViewBuilder
+    private func elementView(for id: UUID) -> some View {
+        if let element = page.elements.first(where: { $0.id == id }) {
+            ElementContainerView(store: store, element: element)
+                .offset(x: element.position.x, y: element.position.y)
+                .allowsHitTesting(isCurrent && store.writingMode && !store.drawMode)
         }
     }
 

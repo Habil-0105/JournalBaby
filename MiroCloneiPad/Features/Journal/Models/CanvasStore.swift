@@ -54,6 +54,50 @@ final class CanvasStore: ObservableObject {
         }
     }
 
+    /// The current page's layer order — the two whole-page layers (text
+    /// editor, scribble) plus one slot per individual element, front-to-back.
+    /// Read-through getter, same single-source-of-truth rule as `scribble` /
+    /// `bodyText`. Deliberately read-only — writes go through
+    /// `setLayerOrder(_:)` below, which validates the new value before it
+    /// ever reaches `pages`.
+    var layerOrder: [CanvasLayerRef] {
+        currentPage.layerOrder
+    }
+
+    /// Sets the current page's layer order. Validates that `order` contains
+    /// exactly the same set of refs the page already has — i.e. it's a
+    /// reordering, not an insertion/deletion in disguise. `layerOrder` stays
+    /// in sync with `elements` purely through `addText`/`addImage`/
+    /// `addAudio`/`remove` (below), so this check is a cheap safety net
+    /// against a malformed value ever reaching `pages`, not the mechanism
+    /// that keeps elements and their layer slots aligned. No-ops if the
+    /// value is unchanged.
+    func setLayerOrder(_ order: [CanvasLayerRef]) {
+        guard pages.indices.contains(currentPageIndex) else { return }
+        let current = pages[currentPageIndex].layerOrder
+        guard order.count == current.count, Set(order) == Set(current) else { return }
+        guard current != order else { return }
+        pages[currentPageIndex].layerOrder = order
+    }
+
+    /// Inserts a new element's layer ref at the front (topmost) of the
+    /// given page's order — matches the app's original "newest element
+    /// draws last, i.e. on top" default. Called once by each of
+    /// `addText`/`addImage`/`addAudio`, right after the element itself is
+    /// appended to `elements`.
+    private func insertLayerRefOnTop(_ ref: CanvasLayerRef, onPageAt index: Int) {
+        guard pages.indices.contains(index) else { return }
+        pages[index].layerOrder.insert(ref, at: 0)
+    }
+
+    /// Removes an element's layer ref from the given page's order. Called
+    /// by `remove(_:)` so a deleted element never leaves a stale, unreachable
+    /// slot behind in `layerOrder`.
+    private func removeLayerRef(_ ref: CanvasLayerRef, fromPageAt index: Int) {
+        guard pages.indices.contains(index) else { return }
+        pages[index].layerOrder.removeAll { $0 == ref }
+    }
+
     @Published var selectedElementID: UUID?
 
     /// The text block currently being edited (first responder). Kept
@@ -444,6 +488,7 @@ final class CanvasStore: ObservableObject {
             text: ""
         )
         pages[currentPageIndex].elements.append(element)
+        insertLayerRefOnTop(.element(element.id), onPageAt: currentPageIndex)
         select(element.id)
         // Enter typing mode immediately: select + focus the new text block so
         // its `AutoGrowingTextView` becomes first responder and the keyboard
@@ -477,6 +522,7 @@ final class CanvasStore: ObservableObject {
             imageFileName: fileName
         )
         pages[currentPageIndex].elements.append(element)
+        insertLayerRefOnTop(.element(element.id), onPageAt: currentPageIndex)
         select(element.id)
         return element
     }
@@ -503,6 +549,7 @@ final class CanvasStore: ObservableObject {
             audioDuration: duration
         )
         pages[currentPageIndex].elements.append(element)
+        insertLayerRefOnTop(.element(element.id), onPageAt: currentPageIndex)
         select(element.id)
         return element
     }
@@ -584,6 +631,7 @@ final class CanvasStore: ObservableObject {
         guard let idx = pageAndElementIndex(for: id) else { return }
         if audioPlayer.elementID == id { audioPlayer.stop() }
         pages[idx.page].elements.remove(at: idx.element)
+        removeLayerRef(.element(id), fromPageAt: idx.page)
         if selectedElementID == id { selectedElementID = nil }
         if focusedTextID == id { focusedTextID = nil }
     }

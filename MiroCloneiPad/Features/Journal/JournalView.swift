@@ -50,6 +50,10 @@ struct JournalView: View {
                     hintToolbarButton
 
                     if store.writingMode {
+                        LayerOrderToolbarButton(store: store)
+                    }
+
+                    if store.writingMode {
                         Button {
                             store.exitWritingMode()
                         } label: {
