@@ -1,4 +1,5 @@
 import SwiftUI
+import PencilKit
 
 /// Toolbar entry point for reordering the current page's layers. Only
 /// meaningful — and only shown — in writing mode, since that's the only
@@ -35,13 +36,8 @@ struct LayerOrderToolbarButton: View {
 
 /// The popover body: every layer on the current page, listed top-to-bottom
 /// (topmost first, matching `Page.layerOrder`'s front-to-back convention),
-/// draggable via `List`'s native reorder handles. Drag-to-reorder rather
-/// than up/down buttons because the row count is now dynamic — a page can
-/// have many text/image/audio elements, and up/down taps don't scale the
-/// way a drag handle does once there are more than a handful of rows.
-/// The popover already owns the touch surface, so there's no gesture
-/// conflict with the canvas underneath (the concern that ruled out drag
-/// for the old fixed-3-row design doesn't apply here).
+/// each with a real preview thumbnail, draggable via `List`'s native
+/// reorder handles.
 private struct LayerOrderPopoverView: View {
     @ObservedObject var store: CanvasStore
 
@@ -60,8 +56,8 @@ private struct LayerOrderPopoverView: View {
 
             List {
                 ForEach(store.layerOrder, id: \.self) { ref in
-                    LayerOrderRow(title: title(for: ref), icon: icon(for: ref))
-                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 12))
+                    LayerOrderRow(ref: ref, title: title(for: ref), store: store)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 12))
                 }
                 .onMove { indices, newOffset in
                     var order = store.layerOrder
@@ -78,15 +74,19 @@ private struct LayerOrderPopoverView: View {
             .environment(\.editMode, .constant(.active))
             .frame(height: rowAreaHeight)
         }
-        .frame(width: 280)
+        .frame(width: 300)
     }
 
     /// Caps the list's height so a page with many elements scrolls inside
     /// the popover instead of the popover growing past the screen.
     private var rowAreaHeight: CGFloat {
-        min(CGFloat(store.layerOrder.count) * 44, 320)
+        min(CGFloat(store.layerOrder.count) * 56, 360)
     }
 
+    /// Short category + ordinal label, e.g. "Image 2". The thumbnail next
+    /// to it (not this string) is what actually disambiguates same-kind
+    /// elements now — the ordinal just makes "which one am I dragging"
+    /// unambiguous even before the eye lands on the thumbnail.
     private func title(for ref: CanvasLayerRef) -> String {
         switch ref {
         case .textEditor:
@@ -97,46 +97,11 @@ private struct LayerOrderPopoverView: View {
             guard let element = store.elements.first(where: { $0.id == id }) else {
                 return "Element"
             }
-            return elementTitle(element)
-        }
-    }
-
-    private func icon(for ref: CanvasLayerRef) -> String {
-        switch ref {
-        case .textEditor:
-            return "doc.text"
-        case .scribble:
-            return "scribble"
-        case .element(let id):
-            guard let element = store.elements.first(where: { $0.id == id }) else {
-                return "questionmark.square"
-            }
             switch element.kind {
-            case .text: return "text.alignleft"
-            case .image: return "photo"
-            case .audio: return "waveform"
+            case .text: return "Text \(ordinal(of: element))"
+            case .image: return "Image \(ordinal(of: element))"
+            case .audio: return "Audio \(ordinal(of: element))"
             }
-        }
-    }
-
-    /// Disambiguates same-kind elements the way the user actually needs
-    /// to tell them apart: text blocks show a content preview (so "which
-    /// text is this" is obvious at a glance); image/audio blocks — which
-    /// have no readable content to preview — are numbered by creation
-    /// order ("Image 1", "Image 2", ...) so a page with several images
-    /// can still be reordered by first/second/third rather than by guessing.
-    private func elementTitle(_ element: CanvasElement) -> String {
-        switch element.kind {
-        case .text:
-            let trimmed = (element.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty {
-                return "Text \(ordinal(of: element))"
-            }
-            return String(trimmed.prefix(24))
-        case .image:
-            return "Image \(ordinal(of: element))"
-        case .audio:
-            return "Audio \(ordinal(of: element))"
         }
     }
 
@@ -149,21 +114,208 @@ private struct LayerOrderPopoverView: View {
 }
 
 private struct LayerOrderRow: View {
+    let ref: CanvasLayerRef
     let title: String
-    let icon: String
+    @ObservedObject var store: CanvasStore
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.body)
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 20)
-
+            LayerThumbnailView(ref: ref, store: store)
             Text(title)
                 .font(.body)
                 .lineLimit(1)
-
             Spacer()
         }
+    }
+}
+
+// MARK: - Thumbnails
+
+/// Routes to the right kind of preview for a given layer ref. A fixed
+/// 40×40 frame keeps every row the same height regardless of which
+/// preview type it renders.
+private struct LayerThumbnailView: View {
+    let ref: CanvasLayerRef
+    @ObservedObject var store: CanvasStore
+
+    var body: some View {
+        Group {
+            switch ref {
+            case .scribble:
+                ScribbleThumbnail(drawing: store.currentPage.scribble, canvasSize: store.canvasSize)
+            case .textEditor:
+                TextSnippetThumbnail(text: store.currentPage.bodyText)
+            case .element(let id):
+                if let element = store.elements.first(where: { $0.id == id }) {
+                    switch element.kind {
+                    case .text:
+                        TextSnippetThumbnail(text: element.text ?? "")
+                    case .image:
+                        ImageThumbnail(fileName: element.imageFileName, imagesURL: store.imagesURL)
+                    case .audio:
+                        AudioDurationThumbnail(duration: element.audioDuration)
+                    }
+                } else {
+                    RoundedRectangle(cornerRadius: 6).fill(Color(.tertiarySystemFill))
+                }
+            }
+        }
+        .frame(width: 40, height: 40)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.black.opacity(0.08)))
+    }
+}
+
+/// Rasterizes the page's `PKDrawing` the same way `PageContentView`
+/// already does for carousel-neighbour previews
+/// (`PKDrawing.image(from:scale:)`), just at thumbnail scale. Rendered off
+/// the main actor since it's pure offscreen rasterization with no UIKit
+/// view-hierarchy involvement, so opening the popover doesn't stutter.
+/// `.task(id: drawing)` re-renders only if the drawing itself changes
+/// (PKDrawing is `Equatable`) — reordering rows during a drag doesn't
+/// re-trigger this, since each row's identity (and thus its `@State`)
+/// stays pinned to its `CanvasLayerRef`.
+private struct ScribbleThumbnail: View {
+    let drawing: PKDrawing
+    let canvasSize: CGSize
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            Color(.systemBackground)
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else if drawing.dataRepresentation().isEmpty {
+                Image(systemName: "scribble")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .task(id: drawing) {
+            await render()
+        }
+    }
+
+    private func render() async {
+        guard !drawing.dataRepresentation().isEmpty else {
+            image = nil
+            return
+        }
+        let size = canvasSize.width > 0 && canvasSize.height > 0
+            ? canvasSize
+            : CGSize(width: 400, height: 400 * DesignSystem.pageAspectRatio)
+        let rendered = await Task.detached(priority: .userInitiated) {
+            drawing.image(from: CGRect(origin: .zero, size: size), scale: 0.12)
+        }.value
+        image = rendered
+    }
+}
+
+/// A miniature rendering of the actual text content — not just a name —
+/// so multiple text blocks (or the page body vs. a floating text element)
+/// are told apart by what they actually say, the way the image thumbnail
+/// tells images apart by what they actually show.
+private struct TextSnippetThumbnail: View {
+    let text: String
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color(.systemBackground)
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                Image(systemName: "text.alignleft")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Text(trimmed)
+                    .font(.system(size: 6, weight: .regular))
+                    .lineLimit(6)
+                    .foregroundStyle(.primary)
+                    .padding(3)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        }
+    }
+}
+
+/// Loads the same file `ImageElementView` loads (`store.imagesURL` +
+/// `UIImage(contentsOfFile:)`), just off the main actor so decoding a
+/// full-resolution photo doesn't hitch the popover when it opens on a
+/// page with several images.
+private struct ImageThumbnail: View {
+    let fileName: String?
+    let imagesURL: URL
+    @State private var image: UIImage?
+    @State private var didFail = false
+
+    var body: some View {
+        ZStack {
+            Color(.tertiarySystemFill)
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else if didFail || fileName == nil {
+                Image(systemName: "photo")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                ProgressView()
+                    .controlSize(.mini)
+            }
+        }
+        .clipped()
+        .task(id: fileName) {
+            await load()
+        }
+    }
+
+    private func load() async {
+        guard let fileName else {
+            didFail = true
+            return
+        }
+        let url = imagesURL.appendingPathComponent(fileName)
+        let loaded = await Task.detached(priority: .userInitiated) {
+            UIImage(contentsOfFile: url.path)
+        }.value
+        if let loaded {
+            image = loaded
+        } else {
+            didFail = true
+        }
+    }
+}
+
+/// Audio has no waveform stored anywhere in `CanvasElement` — only
+/// `audioFileName` and `audioDuration` — so a fabricated waveform image
+/// would be decorative fiction, not a real preview. The honest preview is
+/// the duration, formatted the same way `AudioElementView` already
+/// formats it.
+private struct AudioDurationThumbnail: View {
+    let duration: TimeInterval?
+
+    var body: some View {
+        ZStack {
+            Color(.tertiarySystemFill)
+            VStack(spacing: 2) {
+                Image(systemName: "waveform")
+                    .font(.caption2)
+                if let duration {
+                    Text(formatted(duration))
+                        .font(.system(size: 8, weight: .medium))
+                        .monospacedDigit()
+                }
+            }
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private func formatted(_ t: TimeInterval) -> String {
+        let m = Int(t) / 60
+        let s = Int(t) % 60
+        return String(format: "%d:%02d", m, s)
     }
 }
