@@ -96,6 +96,55 @@ final class CanvasStore: ObservableObject {
     /// a time" rule — starting any clip stops whatever was playing.
     let audioPlayer = AudioPlaybackManager()
 
+    // MARK: - Global journal hint
+
+    /// The journal's single hint, shared by every page. Lives at the store
+    /// (journal) level — NOT on any `Page` — so switching pages shows the
+    /// exact same hint and text, and the hint is never recreated per page.
+    @Published var hintText: String = GlobalHint.prompts[0]
+    @Published var hintPosition: CGPoint = GlobalHint.defaultPosition
+    @Published var hintSize: CGSize = GlobalHint.defaultSize
+
+    /// Temporary UI state — whether the hint overlay is currently shown in
+    /// writing mode. Journal-level (never per-page) but deliberately *not*
+    /// persistent: `enterWritingMode()` resets it to `true`, so the hint
+    /// always reappears on each writing session regardless of how it was
+    /// toggled before leaving. `refreshHint` / `moveHint` never touch it.
+    @Published var hintVisible: Bool = true
+
+    /// Moves the global hint, clamped to the paper bounds. The clamp uses
+    /// the hint's current size and reserves the refresh button's overhang so
+    /// the whole hint — card and button — stays inside the paper.
+    func moveHint(to topLeft: CGPoint) {
+        let rightLimit = max(
+            canvasSize.width - hintSize.width - GlobalHint.buttonOverhang.width,
+            0
+        )
+        let bottomLimit = max(canvasSize.height - hintSize.height, 0)
+        hintPosition = CGPoint(
+            x: min(max(topLeft.x, 0), rightLimit),
+            y: min(max(topLeft.y, GlobalHint.buttonOverhang.height), bottomLimit)
+        )
+    }
+
+    /// Resizes the global hint (clamped to `GlobalHint.minSize` /
+    /// `GlobalHint.maxSize`), then re-clamps the position so the enlarged
+    /// hint stays fully on the paper.
+    func setHintSize(_ size: CGSize) {
+        hintSize = CGSize(
+            width: min(max(size.width, GlobalHint.minSize.width), GlobalHint.maxSize.width),
+            height: min(max(size.height, GlobalHint.minSize.height), GlobalHint.maxSize.height)
+        )
+        moveHint(to: hintPosition)
+    }
+
+    /// Replaces the current hint with the next prompt from the pool, keeping
+    /// the hint in the same position. Applies journal-wide immediately —
+    /// every page renders the updated text.
+    func refreshHint() {
+        hintText = GlobalHint.nextPrompt(after: hintText)
+    }
+
     func updateCanvasSize(_ size: CGSize) {
         guard size.width > 0, size.height > 0, size != canvasSize else { return }
         canvasSize = size
@@ -177,6 +226,9 @@ final class CanvasStore: ObservableObject {
             bodyFocused = false
             bodyCaretRect = nil
             drawMode = false
+            // Each writing session shows the global hint again, no matter
+            // how it was toggled before (temporary, never persisted).
+            hintVisible = true
         }
     }
 

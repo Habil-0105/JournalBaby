@@ -47,6 +47,8 @@ struct JournalView: View {
 
                     scribbleToolbarButton
 
+                    hintToolbarButton
+
                     if store.writingMode {
                         Button {
                             store.exitWritingMode()
@@ -103,6 +105,27 @@ struct JournalView: View {
             } label: {
                 Label("Scribble", systemImage: "scribble")
             }
+        }
+    }
+
+    /// The hint-visibility toggle. Only shown in writing mode — in carousel
+    /// mode the hint isn't rendered, so there's nothing to control. Follows
+    /// the same on/off indicator convention as the Scribble button: filled
+    /// icon + accent tint while the hint is visible, outline + secondary
+    /// while it's dismissed. Toggles the store's temporary `hintVisible`
+    /// state; it resets to visible on the next writing session.
+    @ViewBuilder
+    private var hintToolbarButton: some View {
+        if store.writingMode {
+            Button {
+                store.hintVisible.toggle()
+            } label: {
+                Label(
+                    store.hintVisible ? "Hide Hint" : "Show Hint",
+                    systemImage: store.hintVisible ? "lightbulb.fill" : "lightbulb"
+                )
+            }
+            .tint(store.hintVisible ? Color.accentColor : Color.secondary)
         }
     }
 

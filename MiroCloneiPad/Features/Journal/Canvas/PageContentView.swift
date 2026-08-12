@@ -44,6 +44,17 @@ struct PageContentView: View {
             // resize it instead of painting a stroke over it.
             .allowsHitTesting(isCurrent && store.writingMode && !store.drawMode)
 
+            // The journal's shared hint, rendered only by the current page in
+            // writing mode while it's toggled visible — read straight from
+            // the journal-level state on the store, so it is never recreated
+            // per page and stays in one place across all pages. Sits above
+            // elements (it's an overlay note) but under the delete pill. Its
+            // interactive gate mirrors the element gate.
+            if isCurrent && store.writingMode && store.hintVisible {
+                GlobalHintView(store: store)
+                    .offset(x: store.hintPosition.x, y: store.hintPosition.y)
+            }
+
             // One-shot visual feedback when the body editor rejects an
             // edit because it would overflow the paper. Sits on top of
             // the body and elements, but under the delete button so the
