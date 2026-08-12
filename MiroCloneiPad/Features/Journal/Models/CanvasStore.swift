@@ -101,7 +101,7 @@ final class CanvasStore: ObservableObject {
     /// The journal's single hint, shared by every page. Lives at the store
     /// (journal) level — NOT on any `Page` — so switching pages shows the
     /// exact same hint and text, and the hint is never recreated per page.
-    @Published var hintText: String = GlobalHint.prompts[0]
+    @Published var hintText: String = GlobalHint.initialQuestion(for: nil)
     @Published var hintPosition: CGPoint = GlobalHint.defaultPosition
     @Published var hintSize: CGSize = GlobalHint.defaultSize
 
@@ -111,6 +111,22 @@ final class CanvasStore: ObservableObject {
     /// always reappears on each writing session regardless of how it was
     /// toggled before leaving. `refreshHint` / `moveHint` never touch it.
     @Published var hintVisible: Bool = true
+
+    // MARK: - Global emotion (temporary in-memory)
+
+    /// The journal's single global emotion. One per journal, shared by every
+    /// page — switching pages never changes it. `nil` means no emotion
+    /// selected. Deliberately in-memory for now (persistence comes later);
+    /// the value type is already `Codable`-friendly.
+    @Published var globalEmotion: Emotion? = nil
+
+    /// Sets (or clears) the journal's global emotion and immediately points
+    /// the global hint's text at the matching question. Position and size of
+    /// the hint (and its visibility) are left untouched.
+    func setEmotion(_ emotion: Emotion?) {
+        globalEmotion = emotion
+        hintText = GlobalHint.initialQuestion(for: emotion)
+    }
 
     /// Moves the global hint, clamped to the paper bounds. The clamp uses
     /// the hint's current size and reserves the refresh button's overhang so
@@ -138,11 +154,15 @@ final class CanvasStore: ObservableObject {
         moveHint(to: hintPosition)
     }
 
-    /// Replaces the current hint with the next prompt from the pool, keeping
-    /// the hint in the same position. Applies journal-wide immediately —
-    /// every page renders the updated text.
+    /// Replaces the current hint with the next question from the current
+    /// emotion's pool (or the general pool when no emotion is selected),
+    /// keeping the hint in the same position and visibility. Applies
+    /// journal-wide immediately.
     func refreshHint() {
-        hintText = GlobalHint.nextPrompt(after: hintText)
+        hintText = GlobalHint.nextPrompt(
+            after: hintText,
+            in: GlobalHint.questions(for: globalEmotion)
+        )
     }
 
     func updateCanvasSize(_ size: CGSize) {

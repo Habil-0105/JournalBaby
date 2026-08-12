@@ -51,4 +51,18 @@ enum DesignSystem {
         )
         return CGSize(width: width, height: width * pageAspectRatio)
     }
+
+    // MARK: - Global Emotion Stamp (carousel)
+
+    /// Horizontal gap between the current paper's right edge and the stamp.
+    static let stampMargin: CGFloat = 12
+    /// Target stamp width; shrinks to fit narrow (phone) canvases.
+    static let stampWidth: CGFloat = 130
+    /// Floor for the shrunk stamp width.
+    static let minStampWidth: CGFloat = 80
+    /// Height/width ratio — the stamp is taller than it is wide.
+    static let stampAspectRatio: CGFloat = 1.25
+    /// How far the stamp's top sits below the current paper's top edge
+    /// ("aligned with the upper portion of the current paper").
+    static let stampVerticalOffset: CGFloat = 48
 }

@@ -30,10 +30,15 @@ enum GlobalHint {
     /// to the paper.
     static let defaultPosition = CGPoint(x: 20, y: 200)
 
-    /// The pool of prompts the refresh button cycles through. A static,
-    /// local collection — no external AI service.
-    static let prompts: [String] = [
-        "Even on hard days, there's a lesson. What's yours today?",
+    /// The default question shown when no emotion is selected — the hint's
+    /// general context.
+    static let generalQuestion =
+        "Even on hard days, there's a lesson. What's yours today?"
+
+    /// The general prompt pool (no emotion selected) — the refresh button
+    /// cycles through these.
+    static let generalQuestions: [String] = [
+        generalQuestion,
         "What made you smile today — even for a second?",
         "Name one small thing you're proud of today.",
         "What's one kind thing you did for yourself this week?",
@@ -45,13 +50,75 @@ enum GlobalHint {
         "What are you grateful for right now, however small?"
     ]
 
-    /// Cycles to the next prompt without immediately repeating the current
-    /// one (as long as there is more than one prompt).
-    static func nextPrompt(after current: String) -> String {
-        guard !prompts.isEmpty else { return current }
-        guard let index = prompts.firstIndex(of: current) else {
-            return prompts[0]
+    /// Emotion → question pools. Extend any array to add more questions the
+    /// refresh button cycles through for that emotion.
+    static let questionsByEmotion: [Emotion: [String]] = [
+        .happy: [
+            "What made you smile today?",
+            "What's the best part of your day so far?",
+            "What moment today would you want to relive?"
+        ],
+        .calm: [
+            "What helped you feel at peace today?",
+            "Where did you find a quiet moment today?"
+        ],
+        .excited: [
+            "What are you looking forward to?",
+            "What's making your heart race today — in a good way?"
+        ],
+        .grateful: [
+            "What are you grateful for today?",
+            "What small thing are you thankful for right now?"
+        ],
+        .sad: [
+            "What's been weighing on your heart today?",
+            "What would help you feel even a little lighter?"
+        ],
+        .angry: [
+            "What made you feel frustrated today?",
+            "What's one way you could let that frustration out?"
+        ],
+        .anxious: [
+            "What's been on your mind lately?",
+            "What's one small thing you can control right now?"
+        ],
+        .tired: [
+            "What has been draining your energy today?",
+            "What would give you a real rest tonight?"
+        ],
+        .lonely: [
+            "Who do you wish you were closer to today?",
+            "What kind of connection would feel good right now?"
+        ],
+        .overwhelmed: [
+            "What's one thing you can let go of today?",
+            "What's the smallest next step you could take?"
+        ]
+    ]
+
+    /// The pool of questions for the current emotion context (general pool
+    /// when no emotion is selected).
+    static func questions(for emotion: Emotion?) -> [String] {
+        guard let emotion,
+              let questions = questionsByEmotion[emotion],
+              !questions.isEmpty else {
+            return generalQuestions
         }
-        return prompts[(index + 1) % prompts.count]
+        return questions
+    }
+
+    /// The question a hint should start on for the given emotion context.
+    static func initialQuestion(for emotion: Emotion?) -> String {
+        questions(for: emotion)[0]
+    }
+
+    /// Cycles to the next prompt in `pool` without immediately repeating the
+    /// current one (as long as the pool has more than one entry).
+    static func nextPrompt(after current: String, in pool: [String]) -> String {
+        guard !pool.isEmpty else { return current }
+        guard let index = pool.firstIndex(of: current) else {
+            return pool[0]
+        }
+        return pool[(index + 1) % pool.count]
     }
 }

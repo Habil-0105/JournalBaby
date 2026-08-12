@@ -94,6 +94,23 @@ struct PageCarouselView: View {
                         containerHeight: geo.size.height
                     )
                 }
+
+                // The Global Emotion Stamp — carousel-only. Positioned in the
+                // carousel's own coordinate space, to the RIGHT of the current
+                // paper and ABOVE the next/add paper, aligned with the upper
+                // portion of the current paper. Derived from the existing
+                // slot geometry (no arbitrary screen coordinates), so it
+                // scales and repositions together with the carousel.
+                let stampSize = self.stampSize(container: geo.size, slot: pageSize)
+                EmotionStampView(store: store, size: stampSize)
+                    .offset(
+                        x: pageSize.width / 2
+                            + DesignSystem.stampMargin
+                            + stampSize.width / 2,
+                        y: DesignSystem.stampVerticalOffset
+                            + stampSize.height / 2
+                            - pageSize.height / 2
+                    )
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
@@ -150,6 +167,19 @@ struct PageCarouselView: View {
         let lower = Int(floor(visualPageIndex - 0.5))
         let upper = Int(ceil(visualPageIndex + 0.5))
         return Array(lower...upper)
+    }
+
+    /// Display size for the Emotion Stamp. Shrinks on narrow canvases so the
+    /// stamp always fits the empty space to the right of the centered current
+    /// paper (paper's right margin minus trailing margin), never overflowing
+    /// the container.
+    private func stampSize(container: CGSize, slot: CGSize) -> CGSize {
+        let available = max(
+            (container.width - slot.width) / 2 - DesignSystem.stampMargin * 2,
+            DesignSystem.minStampWidth
+        )
+        let width = min(DesignSystem.stampWidth, available)
+        return CGSize(width: width, height: width * DesignSystem.stampAspectRatio)
     }
 
     // MARK: - Slot rendering
